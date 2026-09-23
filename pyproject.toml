@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vito-diag"
+version = "0.1.0"
+description = "Чтение и анализ ошибок Mercedes Vito 4x4 через OBD-II (ELM327)"
+requires-python = ">=3.9"
+dependencies = ["obd>=0.7.2", "pyserial>=3.5"]
+
+[project.scripts]
+vito-diag = "vito_diag.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["vito_diag*"]
+
+[tool.setuptools.package-data]
+vito_diag = ["data/*.json"]
