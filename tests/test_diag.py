@@ -5,7 +5,6 @@ import pytest
 from vito_diag.analyzer import analyze, check_live
 from vito_diag.cli import main
 from vito_diag.dtc import bytes_to_dtc, is_manufacturer_code, load_database, lookup
-from vito_diag.uds import ElmError, describe_status, parse_dtc_report, parse_elm_response
 
 
 def test_bytes_to_dtc():
@@ -55,23 +54,6 @@ def test_check_live_voltage():
     assert check_live(live)
     live["CONTROL_MODULE_VOLTAGE"] = ("", 14.1, "V")
     assert not check_live(live)
-
-
-def test_parse_elm_single_and_multi_frame():
-    assert parse_elm_response("59 02 FF 01 23 45 08\r\r>") == [0x59, 0x02, 0xFF, 0x01, 0x23, 0x45, 0x08]
-    multi = "00B\r0: 59 02 FF 01 23 45\r1: 08 C1 00 00 09 00 00\r\r>"
-    data = parse_elm_response(multi)
-    assert len(data) == 11
-    recs = parse_dtc_report(data)
-    assert recs == [("P0123", 0x45, 0x08), ("U0100", 0x00, 0x09)]
-    assert "confirmedDTC" in describe_status(0x08)
-
-
-def test_parse_elm_errors():
-    with pytest.raises(ElmError):
-        parse_elm_response("NO DATA\r>")
-    with pytest.raises(ElmError):
-        parse_dtc_report([0x7F, 0x19, 0x11])
 
 
 def test_cli_demo_scan(tmp_path, capsys):

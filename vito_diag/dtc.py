@@ -67,7 +67,7 @@ class DTC:
     severity: str = "unknown"
     advice: str = ""
     group: str = "other"
-    source: str = "stored"  # stored / pending / uds
+    source: str = "stored"  # stored / pending / ecu
     ecu: str = ""
     extra: dict = field(default_factory=dict)
 

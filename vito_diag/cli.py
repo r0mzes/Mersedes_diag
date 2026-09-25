@@ -119,52 +119,122 @@ def cmd_live(args):
     return 0
 
 
-def cmd_uds(args):
+def _parse_addr_list(text):
+    """'10,18,28-2F' -> [0x10, 0x18, 0x28..0x2F] (hex)."""
+    result = []
+    for part in text.split(","):
+        part = part.strip()
+        if "-" in part:
+            a, b = part.split("-")
+            result.extend(range(int(a, 16), int(b, 16) + 1))
+        elif part:
+            result.append(int(part, 16))
+    return result
+
+
+def _module_from_args(args):
+    from vito_diag.elm import Module
+
+    if args.can:
+        tx, _, rx = args.can.partition(":")
+        tx_id = int(tx, 16)
+        return Module("can", tx_id, int(rx, 16) if rx else tx_id + 8)
+    if args.kline:
+        return Module("kline", int(args.kline, 16), line=args.line)
+    raise ValueError("Укажите блок: --can 7E0[:7E8] или --kline 10")
+
+
+def _print_module(m):
+    print(f"\n■ {m.name}  протокол: {m.protocol or '?'}")
+    if m.part_number:
+        print(f"    номер детали: {m.part_number}")
+    if m.ident_text:
+        print(f"    идентификация: {m.ident_text}")
+    for req, raw in m.ident_raw.items():
+        print(f"    [{req}] {raw}")
+    if m.error:
+        print(f"    ошибки не прочитаны: {m.error}")
+    elif not m.dtcs:
+        print("    ошибок нет")
+    for d in m.dtcs:
+        print(f"    {d.code} (сырой {d.extra['raw']}, статус {d.extra['status_byte']}: "
+              f"{', '.join(d.extra['status'])}) — {d.description}")
+
+
+def _save_modules(modules, args, extra=None):
+    import json
+    from pathlib import Path
+
+    out = Path(args.reports_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / f"modules_{datetime.now():%Y-%m-%d_%H-%M-%S}.json"
+    data = {"created": datetime.now().isoformat(timespec="seconds"),
+            "modules": [m.to_dict() for m in modules], **(extra or {})}
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
+
+
+def cmd_ecu(args):
     if args.demo:
-        print("Режим uds работает только с реальным адаптером.")
+        print("Команда ecu работает только с реальным адаптером.")
         return 1
     if not args.port:
-        print("Укажите порт: --port COM3 (Windows) / /dev/ttyUSB0 (Linux) / socket://192.168.0.10:35000 (Wi-Fi)")
+        print("Укажите порт: --port COM3 (Windows) / /dev/ttyUSB0 (Linux)")
         return 1
-    from vito_diag.uds import KNOWN_ECUS, ElmError, ElmUds
+    from vito_diag.elm import ElmLink
+    from vito_diag.protocol import DiagError, hex_bytes, parse_hex_request
 
-    elm = ElmUds(args.port, baudrate=args.baudrate or 38400)
+    link = ElmLink(args.port, baudrate=args.baudrate or 38400, unsafe=args.unsafe)
+    print(f"Адаптер: {link.version.splitlines()[-1] if link.version else '?'};  "
+          f"напряжение: {link.voltage()};  лог обмена: {link.log_path}")
+    can_progress = (lambda a: print(f"\r  CAN ID 0x{a:03X}", end="", flush=True))
+    kline_progress = (lambda a: print(f"\r  адрес K-line 0x{a:02X}", end="", flush=True))
+    modules = []
     try:
-        if args.scan:
-            print("Поиск блоков на CAN (1-3 минуты)...")
-            found = elm.scan(progress=lambda tx: print(f"\r  0x{tx:03X}", end="", flush=True))
-            print()
-            if not found:
-                print("Ни один блок не ответил на прямой адрес.")
-            for tx, rx in found:
-                print(f"  запрос 0x{tx:03X} -> ответ 0x{rx:03X}   (python -m vito_diag uds --port {args.port} --tx {tx:X} --rx {rx:X})")
+        if args.action == "monitor":
+            ids = link.monitor_can(args.seconds)
+            if not ids:
+                print("На CAN (контакты 6/14) тишина — это нормально для отдельной диагностической шины.")
+            for cid, n in sorted(ids.items()):
+                print(f"  0x{cid:03X}: {n} кадров")
             return 0
 
-        if args.tx:
-            targets = [(int(args.tx, 16), int(args.rx or f"{int(args.tx, 16) + 8:X}", 16), f"0x{args.tx.upper()}")]
-        else:
-            targets = [v for v in KNOWN_ECUS.values()]
+        if args.action == "raw":
+            m = _module_from_args(args)
+            payload = link.request(m, parse_hex_request(args.request))
+            print(hex_bytes(payload))
+            return 0
 
-        dtcs = []
-        for tx, rx, name in targets:
-            print(f"Блок {name} (0x{tx:03X}/0x{rx:03X})... ", end="", flush=True)
+        if args.action == "read":
+            modules = [_module_from_args(args)]
+        if args.action in ("scan-can", "scan-all"):
+            print("Поиск блоков на CAN (контакты 6/14). Займёт несколько минут...")
+            found = link.scan_can(int(args.start, 16), int(args.end, 16), can_progress)
+            print(f"\n  найдено на CAN: {len(found)}")
+            modules += found
+        if args.action in ("scan-kline", "scan-all"):
+            addrs = _parse_addr_list(args.addrs) if args.addrs else range(0x01, 0xF0)
+            print(f"Поиск блоков на K-line (контакт машины {args.line}). Это долго — до 10-20 минут...")
+            found = link.scan_kline(addrs, line=args.line, slow=args.slow, progress=kline_progress)
+            print(f"\n  найдено на K-line: {len(found)}")
+            modules += found
+
+        for m in modules:
             try:
-                found = elm.read_dtcs(tx, rx, name)
-                print(f"ошибок: {len(found)}")
-                dtcs.extend(found)
-            except ElmError as e:
-                print(f"нет ответа ({e})")
+                link.identify(m)
+                link.read_dtcs(m)
+            except DiagError as e:
+                m.error = str(e)
+            _print_module(m)
     finally:
-        elm.close()
+        link.close()
 
-    analysis = analyze([], [], extra_dtcs=dtcs)
-    info = {"Порт": args.port, "Режим": "UDS 0x19 0x02 (ошибки блоков)"}
-    print_report(info, analysis)
-    for d in dtcs:
-        print(f"  {d.code} [{d.ecu}] тип сбоя {d.extra['failure_type']}, статус: {', '.join(d.extra['status']) or '-'}")
-    if not args.no_save:
-        paths = save_report(info, analysis, args.reports_dir)
-        print(f"Отчёт сохранён: {paths['html']}")
+    if modules and not args.no_save:
+        path = _save_modules(modules, args, {"log": str(link.log_path), "kline_pin": args.line})
+        print(f"\nРезультат: {path}\nЛог обмена: {link.log_path}")
+    all_dtcs = [d for m in modules for d in m.dtcs]
+    if all_dtcs:
+        print_report({"Режим": "опрос блоков (ELM327 напрямую)"}, analyze([], [], extra_dtcs=all_dtcs))
     return 0
 
 
@@ -212,11 +282,24 @@ def build_parser():
     l.add_argument("--log", help="записывать в CSV-файл")
     l.set_defaults(func=cmd_live)
 
-    u = sub.add_parser("uds", parents=[common], help="(эксперимент) ошибки блоков по UDS: КПП и др.")
-    u.add_argument("--tx", help="CAN ID запроса, hex (например 7E1)")
-    u.add_argument("--rx", help="CAN ID ответа, hex (по умолчанию tx+8)")
-    u.add_argument("--scan", action="store_true", help="найти отвечающие блоки")
-    u.set_defaults(func=cmd_uds)
+    e = sub.add_parser("ecu", parents=[common],
+                       help="опрос блоков напрямую через ELM327: поиск, идентификация, ошибки")
+    e.add_argument("action", choices=["monitor", "scan-can", "scan-kline", "scan-all", "read", "raw"],
+                   help="monitor — послушать CAN; scan-* — найти блоки; read — прочитать блок; "
+                        "raw — отправить свой запрос")
+    e.add_argument("request", nargs="?", help="для raw: запрос в hex, например '1A 86'")
+    e.add_argument("--can", help="блок на CAN: ID запроса[:ID ответа], hex (например 7E0:7E8)")
+    e.add_argument("--kline", help="блок на K-line: адрес, hex (например 10)")
+    e.add_argument("--line", default="7",
+                   help="какой контакт машины сейчас выбран переключателем (7, 8, 9, 11) — для отчёта")
+    e.add_argument("--start", default="400", help="scan-can: начальный CAN ID (hex)")
+    e.add_argument("--end", default="7FF", help="scan-can: конечный CAN ID (hex)")
+    e.add_argument("--addrs", help="scan-kline: адреса, hex (например '01-3F,58')")
+    e.add_argument("--slow", action="store_true", help="scan-kline: пробовать и медленную 5-бод инициализацию")
+    e.add_argument("--seconds", type=float, default=5.0, help="monitor: сколько секунд слушать")
+    e.add_argument("--unsafe", action="store_true",
+                   help="разрешить запросы, меняющие данные в блоках (НЕ использовать без необходимости)")
+    e.set_defaults(func=cmd_ecu)
 
     k = sub.add_parser("lookup", help="расшифровать код(ы) без подключения")
     k.add_argument("codes", nargs="+")

@@ -9,7 +9,7 @@ from typing import Dict
 from vito_diag.analyzer import Analysis
 from vito_diag.dtc import SEVERITY_RU
 
-SOURCE_RU = {"stored": "сохранённая", "pending": "ожидающая", "uds": "из блока (UDS)"}
+SOURCE_RU = {"stored": "сохранённая", "pending": "ожидающая", "ecu": "из блока"}
 
 
 def print_report(info: Dict[str, str], analysis: Analysis) -> None:
