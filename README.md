@@ -9,6 +9,10 @@
 Автомобиль (OBD-разъём) ──► адаптер ELM327 ──USB / Bluetooth / Wi-Fi──► ноутбук ──► vito_diag
 ```
 
+> **Ставите на новый ноутбук?** Пошаговая инструкция: [docs/NEW_LAPTOP.md](docs/NEW_LAPTOP.md).
+> Если у ноутбука нет Bluetooth, а адаптер Bluetooth, связь идёт через мост на ESP32:
+> [docs/ESP32_BRIDGE.md](docs/ESP32_BRIDGE.md) (порт FTDI, 38400, адаптер «OBD II», PIN 1234).
+
 ---
 
 ## 1. Что купить
@@ -176,6 +180,12 @@ vito_diag/
   elm.py          прямая работа с ELM327: CAN/K-line, поиск блоков, KWP2000/UDS, лог обмена
   protocol.py     разбор ответов ELM327, KWP2000, UDS; список разрешённых (читающих) запросов
 tests/            тесты (pytest)
+firmware/
+  esp32_obd_bridge/ мост USB ↔ Bluetooth к адаптеру на ESP32 (docs/ESP32_BRIDGE.md)
+tools/
+  esp_terminal.ps1       отправить строки в COM-порт и показать ответ (проверка моста)
+  flash_esp32_bridge.bat прошить мост через arduino-cli
+docs/photos/elm327_board/ фото платы адаптера
 ```
 
 Добавить свой код в базу — допишите запись в `vito_diag/data/dtc_ru.json`:
