@@ -26,6 +26,24 @@ from vito_diag.protocol import (
 TESTER_ADDR = 0xF1
 
 
+def open_serial(port: str, factory=None, **kwargs):
+    """Открыть порт, не поднимая DTR/RTS.
+
+    Мост на ESP32 (docs/ESP32_BRIDGE.md) сидит на FTDI, у которого RTS/DTR заведены
+    на сброс платы: при обычном открытии ESP32 перезагружается или остаётся в сбросе,
+    и связь с адаптером по Bluetooth рвётся.
+    """
+    if factory is None:
+        import serial
+
+        factory = serial.serial_for_url
+    ser = factory(port, do_not_open=True, **kwargs)
+    ser.dtr = False
+    ser.rts = False
+    ser.open()
+    return ser
+
+
 @dataclass
 class Module:
     bus: str                 # "can" или "kline"
@@ -62,9 +80,7 @@ class ElmLink:
     def __init__(self, port: str, baudrate: int = 38400, timeout: float = 3.0,
                  log_dir: str = "logs", unsafe: bool = False, ser=None):
         if ser is None:
-            import serial
-
-            ser = serial.serial_for_url(port, baudrate=baudrate, timeout=0.1)
+            ser = open_serial(port, baudrate=baudrate, timeout=0.1)
         self.ser = ser
         self.timeout = timeout
         self.unsafe = unsafe
