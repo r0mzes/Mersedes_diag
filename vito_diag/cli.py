@@ -254,6 +254,12 @@ def cmd_lookup(args):
     return 0
 
 
+def cmd_gui(args):
+    from vito_diag.gui import main as gui_main
+
+    return gui_main()
+
+
 def build_parser():
     p = argparse.ArgumentParser(
         prog="vito_diag",
@@ -305,6 +311,9 @@ def build_parser():
     e.add_argument("--unsafe", action="store_true",
                    help="разрешить запросы, меняющие данные в блоках (НЕ использовать без необходимости)")
     e.set_defaults(func=cmd_ecu)
+
+    g = sub.add_parser("gui", help="окно с кнопками (для тех, кто не любит командную строку)")
+    g.set_defaults(func=cmd_gui)
 
     k = sub.add_parser("lookup", help="расшифровать код(ы) без подключения")
     k.add_argument("codes", nargs="+")

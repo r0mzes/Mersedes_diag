@@ -51,6 +51,7 @@
 
 ```
 python -m vito_diag ports                                  # найти COM-порт
+python -m vito_diag gui                                    # окно с кнопками (gui_windows.bat)
 python -m vito_diag scan --port COMx                       # OBD-II двигатель + отчёт
 python -m vito_diag ecu monitor --port COMx                # пассивно послушать CAN
 python -m vito_diag ecu scan-all --port COMx --line 7      # найти блоки CAN + K-line (конт. 7)
