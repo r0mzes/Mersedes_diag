@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Отчёт Vito 2026-09-30T21:26:56</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:16px;color:#222;background:#fff}
+table{border-collapse:collapse;width:100%;margin:8px 0 20px}
+td,th{border:1px solid #ccc;padding:6px;text-align:left;vertical-align:top}
+th{background:#f3f3f3} .verdict{font-size:1.2em;padding:10px;background:#fff3e0}
+</style></head><body>
+<h1>Диагностика Mercedes Vito 4x4</h1>
+<p>2026-09-30T21:26:56</p>
+<table><tr><th>Порт</th><td>COM7</td></tr><tr><th>Протокол</th><td>ISO 9141-2 (3)</td></tr><tr><th>Статус</th><td>Car Connected</td></tr><tr><th>Check Engine (MIL)</th><td>не горит</td></tr><tr><th>Кол-во ошибок (по ЭБУ)</th><td>1</td></tr></table>
+<p class="verdict">Есть серьёзные ошибки — нужна диагностика в ближайшее время.</p>
+<h2>Ошибки</h2>
+<table><tr><th>Код</th><th>Серьёзность</th><th>Система</th><th>Описание</th><th>Что проверить</th><th>Тип</th></tr><tr><td><b>P0730</b></td><td style='color:#ef6c00'>Высокая</td><td>Силовой агрегат (двигатель, КПП)</td><td>Неверное передаточное отношение</td><td>Уровень и состояние масла АКПП, гидроблок.</td><td>сохранённая</td></tr></table>
+<h2>Анализ</h2><ol><li><b>Ошибки коробки передач</b> (P0730)<br>Двигатель лишь сообщает о проблеме в КПП. Подробные коды хранятся в блоке КПП — найдите и прочитайте его командой `ecu scan-all` (при необходимости через переключатель K-line).</li></ol>
+<h2>Параметры</h2><table><tr><td>Обороты двигателя</td><td>798 rpm</td></tr><tr><td>Скорость</td><td>0 kph</td></tr><tr><td>Температура ОЖ</td><td>40 °C</td></tr><tr><td>Температура воздуха на впуске</td><td>17 °C</td></tr><tr><td>Нагрузка двигателя</td><td>23.9216 %</td></tr><tr><td>Давление во впуске (наддув, абс.)</td><td>95 kPa</td></tr><tr><td>Атмосферное давление</td><td>96 kPa</td></tr><tr><td>Расход воздуха (MAF)</td><td>14.27 GPS</td></tr><tr><td>Давление в топливной рампе</td><td>30540 kPa</td></tr><tr><td>Напряжение бортсети (ЭБУ)</td><td>14.015 V</td></tr><tr><td>Время работы с запуска</td><td>477 s</td></tr><tr><td>Пробег с горящим Check Engine</td><td>0 km</td></tr><tr><td>Пробег после сброса ошибок</td><td>675 km</td></tr></table>
+
+</body></html>

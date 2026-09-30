@@ -100,3 +100,22 @@ Claude прочитает `CLAUDE.md` с описанием машины и пр
 Схема и прошивка Arduino — в `docs/AUTO_SWITCH.md` и `firmware/obd_switch/` (появятся в
 основной ветке после вливания PR про переключатель). Прошивается из Arduino IDE как обычный
 скетч для Arduino Uno/Nano.
+
+## 7. Работа над окном (GUI) на своём ПК
+
+Машина для этого не нужна.
+
+```powershell
+cd $HOME\Mersedes_diag
+git pull
+copy samples\reports\* reports\     # реальные результаты 2026-09-30 (VIN скрыт)
+.\gui_windows.bat                   # или: .venv\Scripts\python -m vito_diag gui
+```
+
+- Код окна — `vito_diag/gui.py` (Tkinter из стандартного Python, ставить ничего не надо).
+  Окно запускает те же команды `python -m vito_diag ...` и показывает их вывод; разбор
+  сохранённых результатов — функции `saved_results`, `describe_saved`, `format_saved`.
+- Кнопки диагностики без машины проверяются с галочкой «Демо» (отчёты при этом не сохраняются).
+- Тесты: `.venv\Scripts\python -m pytest` (окно — `tests/test_gui.py`).
+- `reports/` и `logs/` в git не попадают (в них VIN и полный обмен с машиной, а репозиторий
+  публичный). Чтобы поделиться результатом, скопируйте его в `samples/reports/`, скрыв VIN.

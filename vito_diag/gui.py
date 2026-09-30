@@ -126,7 +126,9 @@ def format_saved(path: Path) -> str:
 def saved_results(reports_dir: Path):
     """[(путь, строка, демо)] — новые сверху. HTML не берём: у каждого отчёта есть JSON."""
     items = []
-    for p in sorted(reports_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+    # Сортируем по времени из имени (vito_2026-09-30_21-26-56.json): у скопированных файлов и
+    # после git clone время изменения файла не совпадает со временем замера.
+    for p in sorted(reports_dir.glob("*.json"), key=lambda p: p.stem.split("_", 1)[-1], reverse=True):
         info = describe_saved(p)
         if info:
             items.append((p, *info))

@@ -1,0 +1,115 @@
+{
+  "created": "2026-09-30T22:22:37",
+  "modules": [
+    {
+      "bus": "can",
+      "address": "0x7E1",
+      "reply": "0x7E9",
+      "line": "7",
+      "protocol": "kwp",
+      "part_number": "",
+      "ident_text": "",
+      "ident_raw": {
+        "1A86": "5A 86 00 34 46 41 …(обрезано)",
+        "1A87": "5A 87 03 08 03 53 …(обрезано)",
+        "1A90": "5A 90 30 30 30 30 …(обрезано)"
+      },
+      "error": "",
+      "notes": [
+        "идентификация обрезана: адаптер не принимает длинные ответы"
+      ],
+      "dtcs": [
+        {
+          "code": "U140B",
+          "description": "Сеть обмена данными (CAN); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "network",
+          "system": "Сеть обмена данными (CAN)",
+          "source": "ecu",
+          "ecu": "CAN 0x7E1/0x7E9",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "D40B",
+            "status_byte": "0x60",
+            "status": [
+              "состояние: сохранена и присутствует"
+            ]
+          }
+        },
+        {
+          "code": "P1731",
+          "description": "Силовой агрегат (двигатель, КПП); Трансмиссия; код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "transmission",
+          "system": "Силовой агрегат (двигатель, КПП)",
+          "source": "ecu",
+          "ecu": "CAN 0x7E1/0x7E9",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "1731",
+            "status_byte": "0x70",
+            "status": [
+              "состояние: сохранена и присутствует"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "bus": "kline",
+      "address": "0x12",
+      "reply": "",
+      "line": "7",
+      "protocol": "kwp",
+      "part_number": "",
+      "ident_text": "WDF639***********",
+      "ident_raw": {
+        "1A90": "5A 90 57 44 46 36 33 39 … (VIN скрыт)"
+      },
+      "error": "",
+      "notes": [],
+      "dtcs": [
+        {
+          "code": "P2232",
+          "description": "Силовой агрегат (двигатель, КПП)",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Силовой агрегат (двигатель, КПП)",
+          "source": "ecu",
+          "ecu": "K-line (конт. 7) 0x12",
+          "manufacturer_specific": false,
+          "extra": {
+            "raw": "2232",
+            "status_byte": "0x60",
+            "status": [
+              "состояние: сохранена и присутствует"
+            ]
+          }
+        },
+        {
+          "code": "P2135",
+          "description": "Силовой агрегат (двигатель, КПП)",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Силовой агрегат (двигатель, КПП)",
+          "source": "ecu",
+          "ecu": "K-line (конт. 7) 0x12",
+          "manufacturer_specific": false,
+          "extra": {
+            "raw": "2135",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "log": "logs\\elm_2026-09-30_22-22-24.log",
+  "kline_pin": "7"
+}
