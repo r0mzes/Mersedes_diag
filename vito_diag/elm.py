@@ -19,7 +19,7 @@ from typing import Callable, Dict, List, Optional
 from vito_diag.dtc import DTC, lookup
 from vito_diag.protocol import (
     DiagError, check_positive, describe_kwp_status, describe_uds_status, extract_part_number,
-    extract_text, final_payload, hex_bytes, is_read_only, parse_can_response,
+    extract_text, final_payload, hex_bytes, is_read_only, kline_source, parse_can_response_ex,
     parse_kline_response, parse_kwp_dtc_report, parse_uds_dtc_report,
 )
 
@@ -56,6 +56,7 @@ class Module:
     ident_raw: Dict[str, str] = field(default_factory=dict)
     dtcs: List[DTC] = field(default_factory=list)
     error: str = ""
+    notes: List[str] = field(default_factory=list)  # оговорки: обрезанные ответы и т. п.
 
     @property
     def name(self) -> str:
@@ -69,7 +70,7 @@ class Module:
             "reply": f"0x{self.reply:X}" if self.reply else "",
             "line": self.line, "protocol": self.protocol,
             "part_number": self.part_number, "ident_text": self.ident_text,
-            "ident_raw": self.ident_raw, "error": self.error,
+            "ident_raw": self.ident_raw, "error": self.error, "notes": self.notes,
             "dtcs": [d.to_dict() for d in self.dtcs],
         }
 
@@ -89,6 +90,12 @@ class ElmLink:
         self._log = open(self.log_path, "a", encoding="utf-8")
         self.mode = None      # "can" / "kline"
         self.target = None
+        # Особенности клонов ELM327 (выясняются по ходу работы):
+        self.can_header_ignored = None  # True — ATSH на CAN не действует (запросы уходят всем)
+        self.no_fast_init = False       # ATFI не поддерживается — K-line только автоинициализацией
+        self.kline_header_ignored = False  # на K-line отвечает один блок, какой адрес ни задай
+        self.kline_answered: Dict[int, set] = {}  # адрес ответившего -> адреса, к которым обращались
+        self.truncated = False          # последний ответ на CAN обрезан (нет flow control)
         self.version = self.cmd("ATZ", wait=3)
         for c in ("ATE0", "ATL0", "ATS1", "ATH0"):
             self.cmd(c)
@@ -156,7 +163,11 @@ class ElmLink:
             self.cmd("ATFCSD300000")
             self.cmd("ATFCSM1")
             self.target = (tx, rx)
-        return final_payload([parse_can_response(self.cmd(request.hex().upper()))], request[0])
+        data, total = parse_can_response_ex(self.cmd(request.hex().upper()))
+        self.truncated = bool(total) and len(data) < total
+        if self.truncated:
+            self.log(f"!! ответ обрезан: получено {len(data)} из {total} байт")
+        return final_payload([data], request[0])
 
     def monitor_can(self, seconds: float = 5.0) -> Dict[int, int]:
         """Пассивно слушает шину: {CAN ID: число кадров}. Ничего не отправляет в машину."""
@@ -187,9 +198,28 @@ class ElmLink:
                 ids[cid] = ids.get(cid, 0) + 1
         return ids
 
+    def _probe_can(self, tx: int) -> List[int]:
+        """TesterPresent на CAN ID tx -> CAN ID ответивших блоков (нужен ATH1)."""
+        self.cmd(f"ATSH{tx:03X}")
+        for probe in ("3E00", "3E01"):
+            replies = set()
+            for line in self.cmd(probe).replace("\r", "\n").split("\n"):
+                p = line.split()
+                # "7E8 02 7E 00" — ответ; "7E8 03 7F 3E 11" — отказ, но блок живой
+                if len(p) >= 3 and len(p[0]) == 3 and p[2] in ("7E", "7F"):
+                    replies.add(int(p[0], 16))
+            if replies:
+                return sorted(replies)
+        return []
+
     def scan_can(self, start: int = 0x400, end: int = 0x7FF,
                  progress: Optional[Callable[[int], None]] = None) -> List[Module]:
-        """Шлёт TesterPresent на каждый CAN ID и собирает ответившие блоки."""
+        """Шлёт TesterPresent на каждый CAN ID и собирает ответившие блоки.
+
+        Сначала проверяет, действует ли ATSH: если на запросы к 0x7E0 и 0x7E1 отвечают одни
+        и те же блоки, адаптер игнорирует заголовок (дешёвые клоны). Тогда перебор бессмыслен
+        (каждый ID «ответит»), и найти можно только блоки, отвечающие на общий OBD-запрос.
+        """
         self.setup_can()
         self.cmd("ATH1")
         self.cmd("ATCRA")
@@ -197,24 +227,22 @@ class ElmLink:
         self.target = None
         found: Dict[int, Module] = {}
         try:
+            a, b = self._probe_can(0x7E0), self._probe_can(0x7E1)
+            self.can_header_ignored = bool(a) and a == b
+            if self.can_header_ignored:
+                self.log("!! адаптер игнорирует ATSH: перебор CAN ID пропущен")
+                for rx in a:
+                    # Для ответов 7E8..7EF ID запроса по стандарту OBD на 8 меньше.
+                    tx = rx - 8 if 0x7E8 <= rx <= 0x7EF else 0x7DF
+                    found[rx] = Module("can", tx, rx)
+                return list(found.values())
             for tx in range(start, end + 1):
                 if tx == 0x7DF:  # широковещательный адрес OBD
                     continue
                 if progress:
                     progress(tx)
-                self.cmd(f"ATSH{tx:03X}")
-                for probe in ("3E00", "3E01"):
-                    reply = self.cmd(probe)
-                    hit = False
-                    for line in reply.replace("\r", "\n").split("\n"):
-                        p = line.split()
-                        # "7E8 02 7E 00" — ответ; "7E8 03 7F 3E 11" — отказ, но блок живой
-                        if len(p) >= 3 and len(p[0]) == 3 and p[2] in ("7E", "7F"):
-                            rx = int(p[0], 16)
-                            found.setdefault(tx, Module("can", tx, rx))
-                            hit = True
-                    if hit:
-                        break
+                for rx in self._probe_can(tx):
+                    found.setdefault(tx, Module("can", tx, rx))
         finally:
             self.cmd("ATH0")
             self.cmd("ATST FF")
@@ -230,10 +258,18 @@ class ElmLink:
         self.cmd("ATSP5" if init == "fast" else "ATSP4")
         self.cmd("ATH1")       # нужны заголовки, чтобы отделить длину и адреса
         self.cmd("ATKW0")      # не проверять ключевые байты (у Mercedes бывают нестандартные)
+        self.cmd("ATST FF")    # ждать до ~1 с: длинные ответы идут частями вперемешку с 7F xx 78
         self.cmd(f"ATSH81{address:02X}{TESTER_ADDR:02X}")
         self.cmd(f"ATWM81{address:02X}{TESTER_ADDR:02X}3E")  # поддержание связи
+        if init == "fast" and self.no_fast_init:
+            return self._kline_auto_init(address)
         if init == "fast":
             reply = self.cmd("ATFI", wait=4)
+            if reply.strip() == "?":
+                # Клон без ATFI: адаптер сам сделает быструю инициализацию на первом запросе.
+                self.log("!! ATFI не поддерживается — K-line через автоинициализацию")
+                self.no_fast_init = True
+                return self._kline_auto_init(address)
         else:
             self.cmd(f"ATIIA{address:02X}")
             reply = self.cmd("ATSI", wait=6)
@@ -241,6 +277,23 @@ class ElmLink:
         if ok:
             self.target = address
         return ok
+
+    def _kline_auto_init(self, address: int) -> bool:
+        """Инициализация первым запросом (TesterPresent). Блок засчитывается, только если
+        ответил именно он: клон может отправить инициализацию не на тот адрес."""
+        reply = self.cmd("3E01", wait=6)
+        try:
+            src = kline_source(reply)
+        except DiagError:
+            return False
+        if src is not None:
+            self.kline_answered.setdefault(src, set()).add(address)
+        if src != address:
+            if src is not None:
+                self.log(f"!! на запрос к 0x{address:02X} ответил 0x{src:02X}")
+            return False
+        self.target = address
+        return True
 
     def kline_request(self, address: int, request: bytes) -> List[int]:
         self._guard(request)
@@ -253,6 +306,7 @@ class ElmLink:
     def scan_kline(self, addresses=range(0x01, 0xF0), line: str = "7", slow: bool = False,
                    progress: Optional[Callable[[int], None]] = None) -> List[Module]:
         found = []
+        self.kline_answered = {}
         for addr in addresses:
             if addr == TESTER_ADDR:
                 continue
@@ -261,6 +315,15 @@ class ElmLink:
             ok = self.kline_connect(addr, "fast") or (slow and self.kline_connect(addr, "slow"))
             if ok:
                 found.append(Module("kline", addr, line=line, protocol="kwp"))
+            # Один и тот же блок отвечает на запросы к разным адресам — адаптер игнорирует ATSH,
+            # дальше перебирать бессмысленно: ответит только он.
+            src = next((s for s, asked in self.kline_answered.items() if len(asked) >= 2), None)
+            if src is not None:
+                self.kline_header_ignored = True
+                self.log(f"!! адаптер игнорирует адрес K-line: отвечает только 0x{src:02X}")
+                if all(m.address != src for m in found):
+                    found.append(Module("kline", src, line=line, protocol="kwp"))
+                break
         self.cmd("ATPC")
         self.mode = None
         return found
@@ -280,14 +343,48 @@ class ElmLink:
                 check_positive(payload, int(req[:2], 16))
             except DiagError:
                 continue
-            module.ident_raw[req] = hex_bytes(payload)
+            truncated = module.bus == "can" and self.truncated
+            module.ident_raw[req] = hex_bytes(payload) + (" …(обрезано)" if truncated else "")
             if not module.protocol:
                 module.protocol = "kwp" if req.startswith("1A") else "uds"
+            if truncated:
+                # По обрывку номер детали не угадываем — будет ложный результат.
+                note = "идентификация обрезана: адаптер не принимает длинные ответы"
+                if note not in module.notes:
+                    module.notes.append(note)
+                continue
             text = extract_text(payload[2:])
             if text and text not in module.ident_text:
                 module.ident_text = (module.ident_text + " | " + text).strip(" |")
-            if not module.part_number:
+            # 1A90 / 22F190 — это VIN: в его цифрах регулярка «находит» ложный номер детали.
+            if not module.part_number and req not in ("1A90", "22F190"):
                 module.part_number = extract_part_number(payload) or ""
+
+    # Группы ошибок KWP2000 (старшие биты первого байта кода): P, C, B, U.
+    KWP_DTC_GROUPS = (0x0000, 0x4000, 0x8000, 0xC000)
+
+    def _read_kwp_dtcs(self, module: Module) -> list:
+        """KWP 18 02 FF 00; если ответ обрезан — по группам, чтобы ответы влезали в один кадр."""
+        payload = self.request(module, bytes([0x18, 0x02, 0xFF, 0x00]))
+        records = parse_kwp_dtc_report(payload)
+        if not (module.bus == "can" and self.truncated):
+            return records
+        total = payload[1]
+        seen = {r[1]: r for r in records}
+        for group in self.KWP_DTC_GROUPS:
+            try:
+                part = self.request(module, bytes([0x18, 0x02, group >> 8, group & 0xFF]))
+                group_records = parse_kwp_dtc_report(part)
+            except DiagError:
+                continue
+            for r in group_records:
+                seen.setdefault(r[1], r)
+            if self.truncated and len(group_records) < part[1]:
+                module.notes.append(f"группа {group:04X}: ошибок {part[1]}, прочитано "
+                                    f"{len(group_records)} (ответ обрезан)")
+        if len(seen) < total:
+            module.notes.append(f"блок сообщает ошибок: {total}, прочитано: {len(seen)}")
+        return list(seen.values())
 
     def read_dtcs(self, module: Module) -> None:
         """Читает ошибки: сначала KWP2000 (0x18), затем UDS (0x19)."""
@@ -296,7 +393,7 @@ class ElmLink:
         for proto in order:
             try:
                 if proto == "kwp":
-                    records = parse_kwp_dtc_report(self.request(module, bytes([0x18, 0x02, 0xFF, 0x00])))
+                    records = self._read_kwp_dtcs(module)
                     describe = describe_kwp_status
                 else:
                     records = parse_uds_dtc_report(self.request(module, bytes([0x19, 0x02, 0xFF])))

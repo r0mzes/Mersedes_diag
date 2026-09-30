@@ -152,6 +152,8 @@ def _print_module(m):
         print(f"    идентификация: {m.ident_text}")
     for req, raw in m.ident_raw.items():
         print(f"    [{req}] {raw}")
+    for note in m.notes:
+        print(f"    ! {note}")
     if m.error:
         print(f"    ошибки не прочитаны: {m.error}")
     elif not m.dtcs:
@@ -210,6 +212,9 @@ def cmd_ecu(args):
         if args.action in ("scan-can", "scan-all"):
             print("Поиск блоков на CAN (контакты 6/14). Займёт несколько минут...")
             found = link.scan_can(int(args.start, 16), int(args.end, 16), can_progress)
+            if link.can_header_ignored:
+                print("\n  ! Адаптер игнорирует адрес запроса (ATSH) — перебор CAN ID пропущен.\n"
+                      "    Видны только блоки, отвечающие на общий OBD-запрос.")
             print(f"\n  найдено на CAN: {len(found)}")
             modules += found
         if args.action in ("scan-kline", "scan-all"):
