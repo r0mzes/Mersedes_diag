@@ -32,7 +32,13 @@ python -m vito_diag ecu scan-all --port COMx --line 7      # найти блок
 python -m vito_diag ecu scan-kline --port COMx --line 9    # K-line через переключатель
 python -m vito_diag ecu read --port COMx --kline 10        # идентификация + ошибки блока
 python -m vito_diag ecu raw "1A 86" --port COMx --can 7E0  # свой запрос
+python -m vito_diag switch meas --switch COMy              # автопереключатель: напряжения на контактах
+python -m vito_diag ecu scan-kline --port COMx --switch COMy --line 7,8,9,11  # все линии сам
 ```
+
+- Если собран автоматический переключатель (docs/AUTO_SWITCH.md, Arduino на отдельном COM),
+  линию выбирает сама программа через `--switch`; спрашивать пользователя не нужно.
+  `switch sel`/`switch reset-adapter` — только между запусками, не во время опроса.
 
 - Весь обмен с адаптером — в `logs/elm_*.log`, результаты опроса — в `reports/modules_*.json`.
   Непонятные ответы разбирай по логу и дорабатывай парсеры в `vito_diag/protocol.py`.
