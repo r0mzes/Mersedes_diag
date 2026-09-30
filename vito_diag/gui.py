@@ -7,7 +7,6 @@ COM-порт может открыть только одна программа.
 Кнопок стирания ошибок и других запросов, меняющих данные в блоках, здесь нет намеренно.
 """
 
-import glob
 import os
 import queue
 import re
@@ -29,7 +28,7 @@ def build_args(action: str, port: str = "", baudrate: str = "", line: str = "7",
     """Аргументы python -m vito_diag для кнопки окна."""
     common = []
     if demo:
-        common.append("--demo")
+        common += ["--demo", "--no-save"]  # демо-отчёты не должны смешиваться с реальными
     else:
         if port:
             common += ["--port", port]
@@ -48,6 +47,90 @@ def build_args(action: str, port: str = "", baudrate: str = "", line: str = "7",
         key = "--can" if ":" in block or len(block) == 3 else "--kline"
         return ["ecu", "read"] + common + [key, block, "--line", line]
     raise ValueError(f"неизвестное действие {action}")
+
+
+def _when(created: str) -> str:
+    """'2026-09-30T21:26:56' -> '30.09 21:26'."""
+    date, _, clock = created.partition("T")
+    return f"{date[8:10]}.{date[5:7]} {clock[:5]}"
+
+
+def describe_saved(path: Path):
+    """Сохранённый результат -> (строка для списка, демо ли это). None — не наш файл."""
+    import json
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if path.name.startswith("vito_"):
+        demo = data.get("vehicle", {}).get("Порт") == "симулятор"
+        codes = [d["code"] for d in data.get("dtcs", [])]
+        title = (f"{_when(data.get('created', ''))}  Скан двигателя (OBD-II) — ошибок: {len(codes)}"
+                 + (f" [{', '.join(codes)}]" if codes else "") + ("   (ДЕМО)" if demo else ""))
+        return title, demo
+    if path.name.startswith("modules_"):
+        mods = data.get("modules", [])
+        codes = sorted({d["code"] for m in mods for d in m.get("dtcs", [])})
+        title = (f"{_when(data.get('created', ''))}  Опрос блоков — блоков: {len(mods)}, "
+                 f"ошибок: {len(codes)}" + (f" [{', '.join(codes[:6])}{' …' if len(codes) > 6 else ''}]"
+                                            if codes else ""))
+        if len(mods) > 50:
+            title += "   (ложный результат: клон игнорировал адрес)"
+        return title, False
+    return None
+
+
+def format_saved(path: Path) -> str:
+    """Текст сохранённого результата для окна вывода."""
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    out = [f"=== {path.name} ==="]
+    if path.name.startswith("vito_"):
+        out += [f" {k:<24} {v}" for k, v in data.get("vehicle", {}).items()]
+        out.append(f" ИТОГ: {data.get('verdict', '')}")
+        for d in data.get("dtcs", []):
+            out.append(f"  {d['code']:<8} {d['description']}  ({d.get('source', '')})")
+            if d.get("advice"):
+                out.append(f"           → {d['advice']}")
+        for f in data.get("findings", []):
+            out.append(f" • {f['title']} ({', '.join(f.get('codes', []))}): {f.get('advice', '')}")
+        return "\n".join(out)
+    mods = data.get("modules", [])
+    if len(mods) > 50:
+        out.append(f" Блоков: {len(mods)} — это ложный результат старой версии (клон ELM327 "
+                   "игнорировал адрес запроса). Показаны первые 3.")
+        mods = mods[:3]
+    for m in mods:
+        if m["bus"] == "can":
+            name = f"CAN {m['address']}/{m['reply']}"
+        else:
+            name = f"K-line (конт. {m.get('line', '7')}) {m['address']}"
+        out.append(f"\n■ {name}  протокол: {m.get('protocol') or '?'}")
+        if m.get("part_number"):
+            out.append(f"    номер детали: {m['part_number']}")
+        for note in m.get("notes", []):
+            out.append(f"    ! {note}")
+        if m.get("error"):
+            out.append(f"    ошибки не прочитаны: {m['error']}")
+        elif not m.get("dtcs"):
+            out.append("    ошибок нет")
+        for d in m.get("dtcs", []):
+            extra = d.get("extra", {})
+            out.append(f"    {d['code']} (статус {extra.get('status_byte', '?')}: "
+                       f"{', '.join(extra.get('status', []))}) — {d['description']}")
+    return "\n".join(out)
+
+
+def saved_results(reports_dir: Path):
+    """[(путь, строка, демо)] — новые сверху. HTML не берём: у каждого отчёта есть JSON."""
+    items = []
+    for p in sorted(reports_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+        info = describe_saved(p)
+        if info:
+            items.append((p, *info))
+    return items
 
 
 def list_ports():
@@ -137,6 +220,7 @@ class App:
         tools.pack(fill="x", **pad)
         self.stop_btn = ttk.Button(tools, text="Остановить", command=self.stop, state="disabled")
         self.stop_btn.pack(side="left", **pad)
+        ttk.Button(tools, text="Сохранённые результаты", command=self.show_saved).pack(side="left", **pad)
         ttk.Button(tools, text="Открыть последний отчёт", command=self.open_report).pack(side="left", **pad)
         ttk.Button(tools, text="Папка логов", command=lambda: self._open(ROOT / "logs")).pack(side="left", **pad)
         ttk.Button(tools, text="Очистить окно", command=lambda: self.out.delete("1.0", "end")).pack(side="left", **pad)
@@ -294,11 +378,50 @@ class App:
             self.write("\n[остановлено]\n")
 
     def open_report(self):
-        files = sorted(glob.glob(str(ROOT / "reports" / "*.html")), key=os.path.getmtime)
-        if not files:
-            messagebox.showinfo("Отчёты", "Отчётов пока нет — сначала сделайте «Скан двигателя».")
+        """Последний HTML-отчёт скана двигателя с реальной машины (демо пропускаем)."""
+        for path, _, demo in saved_results(ROOT / "reports"):
+            html = path.with_suffix(".html")
+            if path.name.startswith("vito_") and not demo and html.exists():
+                self._open(html)
+                return
+        messagebox.showinfo("Отчёты", "Отчётов с машины пока нет — сначала сделайте «Скан двигателя».")
+
+    def show_saved(self):
+        """Список сохранённых результатов; выбранный показывается в окне вывода."""
+        items = saved_results(ROOT / "reports")
+        if not items:
+            messagebox.showinfo("Результаты", "Сохранённых результатов пока нет.")
             return
-        self._open(Path(files[-1]))
+        win = tk.Toplevel(self.root)
+        win.title("Сохранённые результаты")
+        win.geometry("760x360")
+        box = tk.Listbox(win, font=("Consolas", 10), activestyle="dotbox")
+        box.pack(fill="both", expand=True, padx=6, pady=6)
+        for _, title, demo in items:
+            box.insert("end", title)
+            if demo:
+                box.itemconfigure("end", foreground="gray")
+        box.selection_set(0)
+
+        def show(_event=None):
+            sel = box.curselection()
+            if sel:
+                self.write("\n" + format_saved(items[sel[0]][0]) + "\n")
+
+        def open_html():
+            sel = box.curselection()
+            html = items[sel[0]][0].with_suffix(".html") if sel else None
+            if html and html.exists():
+                self._open(html)
+            else:
+                messagebox.showinfo("HTML", "HTML-отчёт есть только у скана двигателя.", parent=win)
+
+        box.bind("<Double-Button-1>", show)
+        bar = ttk.Frame(win)
+        bar.pack(fill="x", padx=6, pady=(0, 6))
+        ttk.Button(bar, text="Показать в окне", command=show).pack(side="left", padx=4)
+        ttk.Button(bar, text="Открыть HTML", command=open_html).pack(side="left", padx=4)
+        ttk.Label(bar, text="Двойной щелчок — показать. Серым — демо.").pack(side="left", padx=8)
 
     def on_close(self):
         self.stop()
