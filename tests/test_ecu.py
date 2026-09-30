@@ -1,10 +1,11 @@
 import pytest
 
-from tests.fake_elm import FakeElm
+from tests.fake_elm import CloneElm, FakeElm
 from vito_diag.elm import ElmLink, Module
 from vito_diag.protocol import (
-    DiagError, extract_part_number, is_read_only, parse_can_response, parse_hex_request,
-    parse_kline_response, parse_kwp_dtc_report, parse_uds_dtc_report,
+    DiagError, extract_part_number, is_read_only, parse_can_response, parse_can_response_ex,
+    final_payload, parse_hex_request, parse_kline_response, parse_kwp_dtc_report,
+    parse_uds_dtc_report,
 )
 
 
@@ -74,3 +75,46 @@ def test_unsafe_request_blocked(tmp_path):
         link.request(Module("can", 0x7E0, 0x7E8), bytes([0x14, 0xFF, 0x00]))
     assert "14FF00" not in fake.sent
     link.close()
+
+
+def test_clone_can_header_ignored(tmp_path):
+    link = ElmLink("fake", ser=CloneElm(), log_dir=str(tmp_path), timeout=0.2)
+    found = link.scan_can()  # без перебора 0x400..0x7FF
+    assert link.can_header_ignored
+    assert [(m.address, m.reply) for m in found] == [(0x7E1, 0x7E9)]
+    link.close()
+
+
+def test_clone_truncated_replies(tmp_path):
+    link = ElmLink("fake", ser=CloneElm(), log_dir=str(tmp_path), timeout=0.2)
+    m = Module("can", 0x7E1, 0x7E9)
+    link.identify(m)
+    assert m.ident_raw["1A86"].endswith("(обрезано)")
+    assert m.part_number == ""
+    link.read_dtcs(m)
+    assert sorted(d.code for d in m.dtcs) == ["P1731", "U140B"]
+    assert not any("прочитано: " in n for n in m.notes)  # все 2 ошибки прочитаны по группам
+    link.close()
+
+
+def test_parse_can_truncated():
+    data, total = parse_can_response_ex("008\r0: 58 02 D4 0B 60 17\r\r>")
+    assert (len(data), total) == (6, 8)
+    assert parse_kwp_dtc_report(data) == [("U140B", "D40B", 0x60)]
+
+
+def test_clone_kline_without_atfi(tmp_path):
+    link = ElmLink("fake", ser=CloneElm(), log_dir=str(tmp_path), timeout=0.2)
+    found = link.scan_kline(range(0x0E, 0x12))
+    assert link.no_fast_init and link.kline_header_ignored
+    assert [m.address for m in found] == [0x10]
+    link.read_dtcs(found[0])
+    assert [d.code for d in found[0].dtcs] == ["P0715"]
+    link.close()
+
+
+def test_kline_segmented_reply_merged():
+    text = ("83 F1 12 7F 1A 78 97\r87 F1 12 5A 90 57 44 46 36 33 BE\r83 F1 12 7F 1A 78 97\r"
+            "87 F1 12 5A 90 30 30 30 30 30 77\r84 F1 12 5A 90 31 32 DB\r")
+    payload = final_payload(parse_kline_response(text), 0x1A)
+    assert bytes(payload[2:]).decode() == "WDF630000012"

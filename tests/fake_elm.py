@@ -76,3 +76,44 @@ class FakeElm:
         if c == "1802FF00":
             return "85 F1 10 58 01 07 15 E0 00"
         return "83 F1 10 7F " + c[:2] + " 11 00"
+
+
+class CloneElm(FakeElm):
+    """Клон ELM327 v1.5, как у нас в машине (логи 2026-09-30):
+    игнорирует ATSH на CAN (отвечает один блок 0x7E9), многокадровые ответы обрезает до
+    первого кадра, ATFI не знает — K-line только автоинициализацией на первом запросе,
+    и на K-line тоже игнорирует адрес."""
+
+    def _answer(self, c):
+        if c == "ATFI":
+            return "?"
+        if c == "ATPC":
+            self.kline_ok = False
+            return "OK"
+        if c.startswith("AT") or self.protocol == "6":
+            return super()._answer(c)
+        if not self.kline_ok:
+            # Инициализация уходит не по заданному адресу — всегда отвечает блок 0x10.
+            self.kline_ok = True
+            return "BUS INIT: OK\r" + self._kline(c)
+        return self._kline(c)
+
+    def _can(self, c):
+        if c == "3E00":
+            return "NO DATA"
+        if c == "3E01":
+            return "7E9 01 7E" if self.headers else "7E"
+        if c == "1802FF00":
+            return "008\r0: 58 02 D4 0B 60 17"
+        if c == "18020000":
+            return "58 01 17 31 70"
+        if c == "1802C000":
+            return "58 01 D4 0B 60"
+        if c == "1A86":
+            return "012\r0: 5A 86 00 34 46 41"
+        return "7F " + c[:2] + " 31"
+
+    def _kline(self, c):
+        if c == "3E01":
+            return "81 F1 10 7E E0"
+        return super()._kline(c)
