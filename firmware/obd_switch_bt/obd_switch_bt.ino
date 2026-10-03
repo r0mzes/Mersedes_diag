@@ -11,21 +11,25 @@
 //
 // Выводы ESP32-CAM (SD-карту не вставлять, камеру можно не снимать):
 //   GPIO14 -> RX платы реле (UART 115200). UART0 (U0T) не берём: туда идут логи загрузки.
-//   GPIO2, GPIO13, GPIO15 <- делители 100к/18к от контактов машины 8, 9, 11.
+//   GPIO15 <- TX платы реле: контроллер платы шлёт AT-команды «модулю ESP-01», мы отвечаем.
+//   GPIO2, GPIO13 <- делители 100к/18к от контактов машины 8, 9.
 //   GPIO12 и GPIO4 не использовать (12 мешает загрузке, на 4 висит вспышка).
 //
 // Команды: ID, STATE, SEL 7|8|9|11, PWR ON|OFF, MEAS, RESET.
+// Отладка платы реле: BOARD (что плата прислала), BAUD 9600|115200, IPD ON|OFF (кадры в обёртке +IPD).
 
 #include <BluetoothSerial.h>
 
 const char *BT_NAME = "OBD-SWITCH";
 
-const int RELAY_TX = 14, RELAY_RX = -1;
-const uint32_t RELAY_BAUD = 115200;
+const int RELAY_TX = 14, RELAY_RX = 15;
+uint32_t relayBaud = 115200;
+bool ipdWrap = false;  // слать кадр как «+IPD,0,4:<кадр>», будто он пришёл по Wi-Fi
+String boardLog, boardLine;
 
 const float DIVIDER = (100.0 + 18.0) / 18.0;
-const uint8_t MEAS_OBD[] = {8, 9, 11};
-const uint8_t MEAS_GPIO[] = {2, 13, 15};  // ADC2: работает, пока Wi-Fi выключен
+const uint8_t MEAS_OBD[] = {8, 9};
+const uint8_t MEAS_GPIO[] = {2, 13};  // ADC2: работает, пока Wi-Fi выключен
 const uint8_t MEAS_COUNT = sizeof(MEAS_OBD);
 
 BluetoothSerial SerialBT;
@@ -39,6 +43,7 @@ bool rel[5] = {false, false, false, false, false};
 void relay(uint8_t n, bool on) {
   uint8_t frame[4] = {0xA0, n, (uint8_t)(on ? 1 : 0), 0};
   frame[3] = (uint8_t)(frame[0] + frame[1] + frame[2]);
+  if (ipdWrap) Serial1.print("\r\n+IPD,0,4:");
   Serial1.write(frame, 4);
   Serial1.flush();
   rel[n] = on;
@@ -52,6 +57,37 @@ void relayBoardInit() {
   Serial1.print("WIFI CONNECTED\r\nWIFI GOT IP\r\nAT+CIPMUX=1\r\nAT+CIPSERVER=1,8080\r\nAT+CIPSTO=360\r\n");
   Serial1.flush();
   delay(200);
+}
+
+// Ответы «модуля ESP-01» на AT-команды контроллера платы реле.
+void answerBoard(const String &line) {
+  if (!line.startsWith("AT")) return;
+  if (line.startsWith("AT+RST")) {
+    Serial1.print("\r\nOK\r\n");
+    delay(100);
+    Serial1.print("\r\nready\r\nWIFI CONNECTED\r\nWIFI GOT IP\r\n");
+  } else if (line.startsWith("AT+CIFSR")) {
+    Serial1.print("\r\n+CIFSR:APIP,\"192.168.4.1\"\r\n+CIFSR:STAIP,\"192.168.4.1\"\r\n\r\nOK\r\n");
+  } else if (line.startsWith("AT+CIPSTATUS")) {
+    Serial1.print("\r\nSTATUS:2\r\n\r\nOK\r\n");
+  } else {
+    Serial1.print("\r\nOK\r\n");
+  }
+  Serial1.flush();
+}
+
+void pollBoard() {
+  while (Serial1.available()) {
+    char ch = Serial1.read();
+    if (boardLog.length() < 600) boardLog += (ch >= 32 && ch < 127) ? ch : (ch == '\n' ? '|' : (ch == '\r' ? ' ' : '?'));
+    if (ch == '\n' || ch == '\r') {
+      boardLine.trim();
+      if (boardLine.length()) answerBoard(boardLine);
+      boardLine = "";
+    } else if (boardLine.length() < 64) {
+      boardLine += ch;
+    }
+  }
 }
 
 void allDefault() {
@@ -105,6 +141,7 @@ String handle(String c) {
   if (c == "MEAS") return measure();
   if (c == "RESET") { relayBoardInit(); allDefault(); return "OK RESET"; }
   if (c.startsWith("SEL ")) {
+    pollBoard();
     int line = c.substring(4).toInt();
     return selectLine(line) ? "OK SEL " + String(line) : "ERR SEL: only 7, 8, 9, 11";
   }
@@ -113,6 +150,13 @@ String handle(String c) {
     relay(4, !pwrOn);
     return pwrOn ? "OK PWR ON" : "OK PWR OFF";
   }
+  if (c == "BOARD") { String r = "BOARD " + boardLog; boardLog = ""; return r; }
+  if (c == "BAUD 9600" || c == "BAUD 115200") {
+    relayBaud = c.substring(5).toInt();
+    Serial1.updateBaudRate(relayBaud);
+    return "OK BAUD " + String(relayBaud);
+  }
+  if (c == "IPD ON" || c == "IPD OFF") { ipdWrap = c.endsWith("ON"); return ipdWrap ? "OK IPD ON" : "OK IPD OFF"; }
   if (c == "CAN STD") return "OK CAN STD";
   if (c == "CAN ALT") return "ERR CAN ALT: no relay on this board";
   return "ERR unknown command";
@@ -132,9 +176,10 @@ void serveStream(Stream &io, String &buf) {
 
 void setup() {
   Serial.begin(115200);  // через плату ESP32-CAM-MB: отладка и те же команды
-  Serial1.begin(RELAY_BAUD, SERIAL_8N1, RELAY_RX, RELAY_TX);
+  Serial1.begin(relayBaud, SERIAL_8N1, RELAY_RX, RELAY_TX);
   analogSetAttenuation(ADC_11db);
-  delay(2000);  // плата реле успевает стартовать
+  // Плата реле стартует и шлёт AT-команды: 2 с отвечаем на них, потом сообщаем «Wi-Fi подключён».
+  for (uint32_t t0 = millis(); millis() - t0 < 2000;) { pollBoard(); delay(5); }
   relayBoardInit();
   allDefault();
   SerialBT.begin(BT_NAME);
@@ -148,6 +193,7 @@ void loop() {
     btBuf = "";
   }
   wasConnected = connected;
+  pollBoard();
   serveStream(SerialBT, btBuf);
   serveStream(Serial, usbBuf);
   delay(2);
