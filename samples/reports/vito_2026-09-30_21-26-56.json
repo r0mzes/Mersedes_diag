@@ -1,0 +1,102 @@
+{
+  "created": "2026-09-30T21:26:56",
+  "vehicle": {
+    "Порт": "COM7",
+    "Протокол": "ISO 9141-2 (3)",
+    "Статус": "Car Connected",
+    "Check Engine (MIL)": "не горит",
+    "Кол-во ошибок (по ЭБУ)": "1"
+  },
+  "verdict": "Есть серьёзные ошибки — нужна диагностика в ближайшее время.",
+  "dtcs": [
+    {
+      "code": "P0730",
+      "description": "Неверное передаточное отношение",
+      "severity": "high",
+      "advice": "Уровень и состояние масла АКПП, гидроблок.",
+      "group": "transmission",
+      "system": "Силовой агрегат (двигатель, КПП)",
+      "source": "stored",
+      "ecu": "",
+      "manufacturer_specific": false
+    }
+  ],
+  "findings": [
+    {
+      "title": "Ошибки коробки передач",
+      "codes": [
+        "P0730"
+      ],
+      "advice": "Двигатель лишь сообщает о проблеме в КПП. Подробные коды хранятся в блоке КПП — найдите и прочитайте его командой `ecu scan-all` (при необходимости через переключатель K-line).",
+      "severity": "high"
+    }
+  ],
+  "live": {
+    "RPM": {
+      "label": "Обороты двигателя",
+      "value": 798.0,
+      "unit": "rpm"
+    },
+    "SPEED": {
+      "label": "Скорость",
+      "value": 0.0,
+      "unit": "kph"
+    },
+    "COOLANT_TEMP": {
+      "label": "Температура ОЖ",
+      "value": 40.0,
+      "unit": "°C"
+    },
+    "INTAKE_TEMP": {
+      "label": "Температура воздуха на впуске",
+      "value": 17.0,
+      "unit": "°C"
+    },
+    "ENGINE_LOAD": {
+      "label": "Нагрузка двигателя",
+      "value": 23.92156862745098,
+      "unit": "%"
+    },
+    "INTAKE_PRESSURE": {
+      "label": "Давление во впуске (наддув, абс.)",
+      "value": 95.0,
+      "unit": "kPa"
+    },
+    "BAROMETRIC_PRESSURE": {
+      "label": "Атмосферное давление",
+      "value": 96.0,
+      "unit": "kPa"
+    },
+    "MAF": {
+      "label": "Расход воздуха (MAF)",
+      "value": 14.27,
+      "unit": "GPS"
+    },
+    "FUEL_RAIL_PRESSURE_DIRECT": {
+      "label": "Давление в топливной рампе",
+      "value": 30540.0,
+      "unit": "kPa"
+    },
+    "CONTROL_MODULE_VOLTAGE": {
+      "label": "Напряжение бортсети (ЭБУ)",
+      "value": 14.015,
+      "unit": "V"
+    },
+    "RUN_TIME": {
+      "label": "Время работы с запуска",
+      "value": 477.0,
+      "unit": "s"
+    },
+    "DISTANCE_W_MIL": {
+      "label": "Пробег с горящим Check Engine",
+      "value": 0.0,
+      "unit": "km"
+    },
+    "DISTANCE_SINCE_DTC_CLEAR": {
+      "label": "Пробег после сброса ошибок",
+      "value": 675.0,
+      "unit": "km"
+    }
+  },
+  "live_warnings": []
+}

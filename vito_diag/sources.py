@@ -64,8 +64,18 @@ class ObdSource(Source):
         self._obd = obd
         # port=None -> python-OBD сам переберёт доступные последовательные порты.
         # Для Wi-Fi адаптера: port="socket://192.168.0.10:35000"
-        self.conn = obd.OBD(portstr=port, baudrate=baudrate, protocol=protocol,
-                            fast=False, timeout=timeout)
+        from obd import elm327
+
+        from vito_diag.elm import open_serial
+
+        # python-OBD открывает порт сам — подменяем открытие, чтобы не сбрасывать мост ESP32.
+        orig = elm327.serial.serial_for_url
+        elm327.serial.serial_for_url = lambda url, **kw: open_serial(url, factory=orig, **kw)
+        try:
+            self.conn = obd.OBD(portstr=port, baudrate=baudrate, protocol=protocol,
+                                fast=False, timeout=timeout)
+        finally:
+            elm327.serial.serial_for_url = orig
         if not self.conn.is_connected():
             status = self.conn.status()
             self.conn.close()

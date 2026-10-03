@@ -152,6 +152,8 @@ def _print_module(m):
         print(f"    идентификация: {m.ident_text}")
     for req, raw in m.ident_raw.items():
         print(f"    [{req}] {raw}")
+    for note in m.notes:
+        print(f"    ! {note}")
     if m.error:
         print(f"    ошибки не прочитаны: {m.error}")
     elif not m.dtcs:
@@ -251,6 +253,9 @@ def cmd_ecu(args):
         if args.action in ("scan-can", "scan-all"):
             print("Поиск блоков на CAN (контакты 6/14). Займёт несколько минут...")
             found = link.scan_can(int(args.start, 16), int(args.end, 16), can_progress)
+            if link.can_header_ignored:
+                print("\n  ! Адаптер игнорирует адрес запроса (ATSH) — перебор CAN ID пропущен.\n"
+                      "    Видны только блоки, отвечающие на общий OBD-запрос.")
             print(f"\n  найдено на CAN: {len(found)}")
             _read_modules(link, found)
             modules += found
@@ -327,6 +332,12 @@ def cmd_lookup(args):
     return 0
 
 
+def cmd_gui(args):
+    from vito_diag.gui import main as gui_main
+
+    return gui_main()
+
+
 def build_parser():
     p = argparse.ArgumentParser(
         prog="vito_diag",
@@ -388,6 +399,9 @@ def build_parser():
     w.add_argument("--switch", help="порт переключателя (Arduino), например COM7")
     w.add_argument("--count", type=int, default=1, help="meas: сколько замеров подряд")
     w.set_defaults(func=cmd_switch)
+
+    g = sub.add_parser("gui", help="окно с кнопками (для тех, кто не любит командную строку)")
+    g.set_defaults(func=cmd_gui)
 
     k = sub.add_parser("lookup", help="расшифровать код(ы) без подключения")
     k.add_argument("codes", nargs="+")

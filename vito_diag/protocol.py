@@ -67,6 +67,8 @@ def parse_hex_request(text: str) -> bytes:
 def _clean_lines(text: str) -> List[str]:
     lines = [l.strip() for l in text.replace("\r", "\n").split("\n")]
     lines = [l for l in lines if l and l != ">" and not l.upper().startswith("SEARCHING")]
+    # "BUS INIT: OK" / "BUS INIT: ...OK" — успешная автоинициализация K-line, не ошибка.
+    lines = [l for l in lines if not (l.upper().startswith("BUS INIT") and l.upper().endswith("OK"))]
     for l in lines:
         if any(l.upper().startswith(e) for e in ELM_ERRORS):
             raise DiagError(" / ".join(lines))
@@ -79,11 +81,19 @@ def parse_can_response(text: str) -> List[int]:
     Одиночный кадр:   "59 02 FF 01 23 45 08"
     Многокадровый:    "00B\\r0: 59 02 FF 01 23 45\\r1: 08 ..."
     """
+    return parse_can_response_ex(text)[0]
+
+
+def parse_can_response_ex(text: str) -> Tuple[List[int], int]:
+    """Как parse_can_response, но ещё возвращает заявленную длину многокадрового ответа
+    (0 — одиночный кадр). Если данных меньше заявленного — ответ обрезан: клоны ELM327
+    без рабочего flow control отдают только первый кадр ("008\\r0: 58 02 D4 0B 60 17").
+    """
     lines = _clean_lines(text)
     if not any(":" in l for l in lines):
         # Несколько одиночных кадров подряд (например, 7F xx 78, затем ответ) —
         # берём последний.
-        return [int(x, 16) for x in lines[-1].split()] if lines else []
+        return ([int(x, 16) for x in lines[-1].split()] if lines else []), 0
     total = None
     data: List[int] = []
     for l in lines:
@@ -91,7 +101,7 @@ def parse_can_response(text: str) -> List[int]:
             data.extend(int(x, 16) for x in l.split(":", 1)[1].split())
         elif total is None:
             total = int(l.replace(" ", ""), 16)
-    return data[:total] if total else data
+    return (data[:total] if total else data), total or 0
 
 
 def parse_kline_response(text: str) -> List[List[int]]:
@@ -119,8 +129,27 @@ def parse_kline_response(text: str) -> List[List[int]]:
     return messages
 
 
+def kline_source(text: str) -> Optional[int]:
+    """Адрес блока-отправителя из ответа K-line с заголовками ("83 F1 10 7E ..." -> 0x10)."""
+    for line in _clean_lines(text):
+        try:
+            b = [int(x, 16) for x in line.split()]
+        except ValueError:
+            continue
+        if len(b) >= 3 and b[0] & 0x80:
+            return b[2]
+    return None
+
+
 def final_payload(messages: List[List[int]], service: int) -> List[int]:
-    """Выбирает итоговый ответ, пропуская «ответ будет позже» (7F xx 78)."""
+    """Выбирает итоговый ответ, пропуская «ответ будет позже» (7F xx 78).
+
+    Длинный ответ на K-line блок может отдать частями — несколькими положительными
+    сообщениями с тем же заголовком (5A 90 "WDF63", 5A 90 "96031", ...): их склеиваем.
+    """
+    positive = [m for m in messages if len(m) >= 2 and m[0] == service + 0x40]
+    if len(positive) > 1 and all(m[1] == positive[0][1] for m in positive):
+        return positive[0][:2] + [b for m in positive for b in m[2:]]
     for m in reversed(messages):
         if len(m) >= 3 and m[0] == 0x7F and m[2] == 0x78:
             continue
