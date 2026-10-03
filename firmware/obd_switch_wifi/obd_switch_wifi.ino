@@ -25,7 +25,7 @@ const char *AP_PASS = "obd12345";
 const uint16_t TCP_PORT = 3333;
 
 // ---- управление платой реле ----
-// UART: ESP32-S3 GPIO17 (TX) -> RX платы (контакт RX разъёма ESP-01 или боковой колодки).
+// UART: ESP32-S3 GPIO17 (TX) -> контакт TX боковой колодки, GPIO18 (RX) <- RX: подписи со стороны ESP-01.
 // Кадр платы LC: A0 <номер реле 1..4> <01 вкл / 00 выкл> <сумма трёх байт>.
 const int RELAY_TX = 17, RELAY_RX = 18;
 const uint32_t RELAY_BAUD = 115200;
