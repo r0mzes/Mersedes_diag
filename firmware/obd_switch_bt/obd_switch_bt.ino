@@ -10,8 +10,8 @@
 // Без питания, после перезагрузки и при разрыве Bluetooth все реле отпущены: линия 7, адаптер запитан.
 //
 // Выводы ESP32-CAM (SD-карту не вставлять, камеру можно не снимать):
-//   GPIO2  -> RX платы реле (UART 115200). Перед прошивкой ESP32-CAM этот провод отсоединить.
-//   GPIO13, GPIO14, GPIO15 <- делители 100к/18к от контактов машины 8, 9, 11.
+//   GPIO14 -> RX платы реле (UART 115200). UART0 (U0T) не берём: туда идут логи загрузки.
+//   GPIO2, GPIO13, GPIO15 <- делители 100к/18к от контактов машины 8, 9, 11.
 //   GPIO12 и GPIO4 не использовать (12 мешает загрузке, на 4 висит вспышка).
 //
 // Команды: ID, STATE, SEL 7|8|9|11, PWR ON|OFF, MEAS, RESET.
@@ -20,12 +20,12 @@
 
 const char *BT_NAME = "OBD-SWITCH";
 
-const int RELAY_TX = 2, RELAY_RX = -1;
+const int RELAY_TX = 14, RELAY_RX = -1;
 const uint32_t RELAY_BAUD = 115200;
 
 const float DIVIDER = (100.0 + 18.0) / 18.0;
 const uint8_t MEAS_OBD[] = {8, 9, 11};
-const uint8_t MEAS_GPIO[] = {13, 14, 15};  // ADC2: работает, пока Wi-Fi выключен
+const uint8_t MEAS_GPIO[] = {2, 13, 15};  // ADC2: работает, пока Wi-Fi выключен
 const uint8_t MEAS_COUNT = sizeof(MEAS_OBD);
 
 BluetoothSerial SerialBT;
