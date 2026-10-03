@@ -58,7 +58,7 @@ class LineSwitch:
             time.sleep(boot_wait)
         self.ser = ser
         self.ser.reset_input_buffer()
-        ident = self.cmd("ID")
+        ident = self.cmd("ID", wait=5.0)  # Bluetooth-порт отвечает не сразу
         if not ident.startswith("OBDSW"):
             raise SwitchError(f"На порту {port} не переключатель OBD (ответ: {ident!r})")
         self.version = ident
