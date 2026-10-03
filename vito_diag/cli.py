@@ -294,7 +294,7 @@ def cmd_switch(args):
             sw.select(args.value or "7")
             restore = False
             print(sw.state())
-            print("Внимание: при следующем открытии порта Arduino перезагрузится и вернёт линию 7.")
+            print("Внимание: после отключения от переключателя он сам вернёт линию 7.")
         elif args.action == "can":
             sw.can_pair((args.value or "std").lower() == "alt")
             restore = False
