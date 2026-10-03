@@ -53,6 +53,15 @@ void relay(uint8_t n, bool on) {
   delay(30);  // реле успевает переключиться до следующей команды
 }
 
+// Контроллер платы LC (STM8/N76) рассчитан на ESP-01 с AT-прошивкой и принимает кадры реле
+// только после того, как «ESP-01» сообщит о подключении к Wi-Fi. Изображаем эти строки
+// (так же делают с этой платой в Tasmota).
+void relayBoardInit() {
+  Serial1.print("WIFI CONNECTED\r\nWIFI GOT IP\r\nAT+CIPMUX=1\r\nAT+CIPSERVER=1,8080\r\nAT+CIPSTO=360\r\n");
+  Serial1.flush();
+  delay(200);
+}
+
 void allDefault() {
   for (uint8_t n = 1; n <= 4; n++) relay(n, false);
   selLine = 7;
@@ -107,7 +116,7 @@ String handle(String c) {
   if (c == "ID") return "OBDSW 1 WIFI";
   if (c == "STATE") return state();
   if (c == "MEAS") return measure();
-  if (c == "RESET") { allDefault(); return "OK RESET"; }
+  if (c == "RESET") { relayBoardInit(); allDefault(); return "OK RESET"; }
   if (c.startsWith("SEL ")) {
     int line = c.substring(4).toInt();
     return selectLine(line) ? "OK SEL " + String(line) : "ERR SEL: only 7, 8, 9, 11";
@@ -126,7 +135,8 @@ void setup() {
   Serial.begin(115200);  // USB: отладка и те же команды по кабелю
   Serial1.begin(RELAY_BAUD, SERIAL_8N1, RELAY_RX, RELAY_TX);
   analogSetAttenuation(ADC_11db);
-  delay(500);  // плата реле успевает стартовать
+  delay(2000);  // плата реле успевает стартовать
+  relayBoardInit();
   allDefault();
 
   WiFi.mode(WIFI_STA);
