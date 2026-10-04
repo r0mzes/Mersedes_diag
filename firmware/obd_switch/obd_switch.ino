@@ -178,8 +178,8 @@ void loop() {
     if (ch == '\n' || ch == '\r') {
       handle(buf);
       buf = "";
-    } else if (buf.length() < 32) {
-      buf += ch;
+    } else if (ch >= 32 && ch < 127 && buf.length() < 32) {
+      buf += ch;  // мусорные байты (например 0xFF от помехи на линии HC-06) отбрасываем
     }
   }
 }
