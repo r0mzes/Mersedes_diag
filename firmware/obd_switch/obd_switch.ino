@@ -151,7 +151,14 @@ void handle(String c) {
     io->println(pwrOn ? F("OK PWR ON") : F("OK PWR OFF"));
     return;
   }
-  io->println(F("ERR unknown command"));
+  // показываем, что именно пришло (в hex): видно, если байты искажаются по дороге
+  io->print(F("ERR unknown command:"));
+  for (uint8_t i = 0; i < c.length(); i++) {
+    io->print(' ');
+    if ((uint8_t)c[i] < 16) io->print('0');
+    io->print((uint8_t)c[i], HEX);
+  }
+  io->println();
 }
 
 void setup() {
