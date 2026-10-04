@@ -22,12 +22,12 @@
 
 // Скорость порта: 115200 — управление по USB-кабелю; 9600 — Bluetooth-модуль HC-06 на D0/D1
 // (скорость HC-06 по умолчанию). На время прошивки по USB отключайте HC-06 от D0.
-const long SERIAL_BAUD = 115200;
+const long SERIAL_BAUD = 9600;  // наша сборка: HC-06
 
 // HC-06 подключён «как к переходнику»: TXD модуля на D1, RXD на D0 (так удобно слать ему
 // AT-команды с компьютера через USB Uno). Тогда связь идёт программным портом: приём D1,
 // передача D0, а аппаратный UART не включается. Для такого подключения поставьте true.
-const bool LINK_CROSSED = false;
+const bool LINK_CROSSED = true;  // наша сборка: HC-06 TXD на D1
 
 #include <SoftwareSerial.h>
 SoftwareSerial crossed(1, 0);  // RX = D1, TX = D0
