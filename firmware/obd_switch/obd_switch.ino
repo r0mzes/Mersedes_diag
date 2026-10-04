@@ -24,6 +24,16 @@
 // (скорость HC-06 по умолчанию). На время прошивки по USB отключайте HC-06 от D0.
 const long SERIAL_BAUD = 115200;
 
+// HC-06 подключён «как к переходнику»: TXD модуля на D1, RXD на D0 (так удобно слать ему
+// AT-команды с компьютера через USB Uno). Тогда связь идёт программным портом: приём D1,
+// передача D0, а аппаратный UART не включается. Для такого подключения поставьте true.
+const bool LINK_CROSSED = false;
+
+#include <SoftwareSerial.h>
+SoftwareSerial crossed(1, 0);  // RX = D1, TX = D0
+Stream *io = &Serial;
+
+
 // ---- настройка под ваш модуль реле ----
 const bool RELAY_ACTIVE_LOW = true;  // большинство модулей с оптронами включаются низким уровнем
 
@@ -86,7 +96,7 @@ bool selectLine(int line) {
 }
 
 void measure() {
-  Serial.print(F("MEAS"));
+  io->print(F("MEAS"));
   for (uint8_t i = 0; i < MEAS_COUNT; i++) {
     analogRead(MEAS_ADC[i]);  // первый отсчёт после смены канала отбрасываем
     long sum = 0;
@@ -99,64 +109,65 @@ void measure() {
       if (v > hi) hi = v;
     }
     float k = VREF / 1023.0 * DIVIDER;
-    Serial.print(' ');
-    Serial.print(MEAS_OBD[i]);
-    Serial.print(':'); Serial.print(sum * k / n, 2);
-    Serial.print(':'); Serial.print(lo * k, 2);
-    Serial.print(':'); Serial.print(hi * k, 2);
+    io->print(' ');
+    io->print(MEAS_OBD[i]);
+    io->print(':'); io->print(sum * k / n, 2);
+    io->print(':'); io->print(lo * k, 2);
+    io->print(':'); io->print(hi * k, 2);
   }
-  Serial.println();
+  io->println();
 }
 
 void printState() {
-  Serial.print(F("STATE SEL ")); Serial.print(selLine);
-  Serial.print(canAlt ? F(" CAN ALT") : F(" CAN STD"));
-  Serial.println(pwrOn ? F(" PWR ON") : F(" PWR OFF"));
+  io->print(F("STATE SEL ")); io->print(selLine);
+  io->print(canAlt ? F(" CAN ALT") : F(" CAN STD"));
+  io->println(pwrOn ? F(" PWR ON") : F(" PWR OFF"));
 }
 
 void handle(String c) {
   c.trim();
   c.toUpperCase();
   if (c.length() == 0) return;
-  if (c == "ID") { Serial.println(F("OBDSW 1")); return; }
+  if (c == "ID") { io->println(F("OBDSW 1")); return; }
   if (c == "STATE") { printState(); return; }
   if (c == "MEAS") { measure(); return; }
-  if (c == "RESET") { allDefault(); Serial.println(F("OK RESET")); return; }
+  if (c == "RESET") { allDefault(); io->println(F("OK RESET")); return; }
   if (c.startsWith("SEL ")) {
     int line = c.substring(4).toInt();
-    if (selectLine(line)) { Serial.print(F("OK SEL ")); Serial.println(line); }
-    else Serial.println(F("ERR SEL: only 7, 8, 9, 11"));
+    if (selectLine(line)) { io->print(F("OK SEL ")); io->println(line); }
+    else io->println(F("ERR SEL: only 7, 8, 9, 11"));
     return;
   }
   if (c == "CAN STD" || c == "CAN ALT") {
     canAlt = c.endsWith("ALT");
     relay(PIN_CAN_H, canAlt);
     relay(PIN_CAN_L, canAlt);
-    Serial.println(canAlt ? F("OK CAN ALT") : F("OK CAN STD"));
+    io->println(canAlt ? F("OK CAN ALT") : F("OK CAN STD"));
     return;
   }
   if (c == "PWR ON" || c == "PWR OFF") {
     pwrOn = c.endsWith("ON");
     relay(PIN_PWR, !pwrOn);
-    Serial.println(pwrOn ? F("OK PWR ON") : F("OK PWR OFF"));
+    io->println(pwrOn ? F("OK PWR ON") : F("OK PWR OFF"));
     return;
   }
-  Serial.println(F("ERR unknown command"));
+  io->println(F("ERR unknown command"));
 }
 
 void setup() {
   // Сначала уровень «выключено», потом OUTPUT — чтобы реле не щёлкнули при старте.
   for (uint8_t p : RELAYS) { relay(p, false); pinMode(p, OUTPUT); }
   allDefault();
-  Serial.begin(SERIAL_BAUD);
-  Serial.println(F("OBDSW 1"));
+  if (LINK_CROSSED) { crossed.begin(SERIAL_BAUD); io = &crossed; }
+  else Serial.begin(SERIAL_BAUD);
+  io->println(F("OBDSW 1"));
 }
 
 String buf;
 
 void loop() {
-  while (Serial.available()) {
-    char ch = Serial.read();
+  while (io->available()) {
+    char ch = io->read();
     if (ch == '\n' || ch == '\r') {
       handle(buf);
       buf = "";
