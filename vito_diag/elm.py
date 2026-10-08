@@ -93,6 +93,7 @@ class ElmLink:
         # Особенности клонов ELM327 (выясняются по ходу работы):
         self.can_header_ignored = None  # True — ATSH на CAN не действует (запросы уходят всем)
         self.no_fast_init = False       # ATFI не поддерживается — K-line только автоинициализацией
+        self.no_slow_init = False       # ATSI не поддерживается — то же для 5-бод инициализации
         self.kline_header_ignored = False  # на K-line отвечает один блок, какой адрес ни задай
         self.kline_answered: Dict[int, set] = {}  # адрес ответившего -> адреса, к которым обращались
         self.truncated = False          # последний ответ на CAN обрезан (нет flow control)
@@ -263,6 +264,9 @@ class ElmLink:
         self.cmd(f"ATWM81{address:02X}{TESTER_ADDR:02X}3E")  # поддержание связи
         if init == "fast" and self.no_fast_init:
             return self._kline_auto_init(address)
+        if init == "slow" and self.no_slow_init:
+            self.cmd(f"ATIIA{address:02X}")  # 5-бод инициализация на первом запросе — по этому адресу
+            return self._kline_auto_init(address)
         if init == "fast":
             reply = self.cmd("ATFI", wait=4)
             if reply.strip() == "?":
@@ -273,6 +277,11 @@ class ElmLink:
         else:
             self.cmd(f"ATIIA{address:02X}")
             reply = self.cmd("ATSI", wait=6)
+            if reply.strip() == "?":
+                # Клон без ATSI (проверено 2026-10-08): медленная инициализация — тоже первым запросом.
+                self.log("!! ATSI не поддерживается — 5-бод инициализация первым запросом")
+                self.no_slow_init = True
+                return self._kline_auto_init(address)
         ok = "OK" in reply.upper() and "ERROR" not in reply.upper()
         if ok:
             self.target = address
@@ -312,7 +321,9 @@ class ElmLink:
                 continue
             if progress:
                 progress(addr)
-            ok = self.kline_connect(addr, "fast") or (slow and self.kline_connect(addr, "slow"))
+            # slow="only" — только 5-бод (когда быстрая инициализация на линии уже проверена)
+            ok = ((slow != "only" and self.kline_connect(addr, "fast"))
+                  or (bool(slow) and self.kline_connect(addr, "slow")))
             if ok:
                 found.append(Module("kline", addr, line=line, protocol="kwp"))
             # Один и тот же блок отвечает на запросы к разным адресам — адаптер игнорирует ATSH,

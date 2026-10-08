@@ -276,7 +276,8 @@ def cmd_ecu(args):
             for line in lines:
                 _select_line(link, sw, line)
                 print(f"Поиск блоков на K-line (контакт машины {line}). Это долго — до 10-20 минут...")
-                found = link.scan_kline(addrs, line=line, slow=args.slow, progress=kline_progress)
+                found = link.scan_kline(addrs, line=line, slow="only" if args.slow_only else args.slow,
+                                       progress=kline_progress)
                 print(f"\n  найдено на K-line (конт. {line}): {len(found)}")
                 _read_modules(link, found)
                 modules += found
@@ -439,6 +440,8 @@ def build_parser():
     e.add_argument("--end", default="7FF", help="scan-can: конечный CAN ID (hex)")
     e.add_argument("--addrs", help="scan-kline: адреса, hex (например '01-3F,58')")
     e.add_argument("--slow", action="store_true", help="scan-kline: пробовать и медленную 5-бод инициализацию")
+    e.add_argument("--slow-only", action="store_true",
+                   help="scan-kline: только медленная 5-бод инициализация (быструю уже проверили)")
     e.add_argument("--seconds", type=float, default=5.0, help="monitor: сколько секунд слушать")
     e.add_argument("--unsafe", action="store_true",
                    help="разрешить запросы, меняющие данные в блоках (НЕ использовать без необходимости)")

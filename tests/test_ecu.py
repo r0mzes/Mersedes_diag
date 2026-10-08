@@ -118,3 +118,21 @@ def test_kline_segmented_reply_merged():
             "87 F1 12 5A 90 30 30 30 30 30 77\r84 F1 12 5A 90 31 32 DB\r")
     payload = final_payload(parse_kline_response(text), 0x1A)
     assert bytes(payload[2:]).decode() == "WDF630000012"
+
+
+def test_clone_slow_init_without_atsi(tmp_path):
+    """Блок просыпается только от 5-бод инициализации, а клон не знает ATSI."""
+    from tests.fake_elm import CloneElm
+
+    class SlowOnly(CloneElm):
+        def _answer(self, c):
+            if not c.startswith("AT") and self.protocol == "5" and not self.kline_ok:
+                return "BUS INIT: ...ERROR"
+            return super()._answer(c)
+
+    fake = SlowOnly()
+    link = ElmLink("fake", ser=fake, log_dir=str(tmp_path), timeout=0.2)
+    found = link.scan_kline([0x10], slow=True)
+    assert [m.address for m in found] == [0x10]
+    assert link.no_slow_init
+    assert "ATIIA10" in fake.sent
