@@ -23,9 +23,16 @@ ROOT = Path(__file__).resolve().parent.parent
 _NOISE = re.compile(r"^WARNING:pint\.util")
 
 
+ALL_LINES = "7,8,9,11"
+
+
 def build_args(action: str, port: str = "", baudrate: str = "", line: str = "7",
-               block: str = "", demo: bool = False) -> list:
-    """Аргументы python -m vito_diag для кнопки окна."""
+               block: str = "", demo: bool = False, switch: bool = False) -> list:
+    """Аргументы python -m vito_diag для кнопки окна.
+
+    switch — авто-переключатель линий на HC-06, через тот же мост ESP32 (--switch bt)."""
+    if line == ALL_LINES and not (switch and action == "scan-all"):
+        raise ValueError("Все линии сразу — только «Найти все блоки» с включённым авто-переключателем")
     common = []
     if demo:
         common += ["--demo", "--no-save"]  # демо-отчёты не должны смешиваться с реальными
@@ -38,14 +45,19 @@ def build_args(action: str, port: str = "", baudrate: str = "", line: str = "7",
         return ["scan"] + common
     if action == "live":
         return ["live"] + common + ["--interval", "1"]
+    ecu_sw = ["--switch", "bt"] if switch and not demo else []
+    if action == "switch-meas":
+        if demo or not port:
+            raise ValueError("Замер — только с реальным мостом: выберите порт и снимите «Демо»")
+        return ["switch", "meas", "--switch", "bt", "--port", port]
     if action == "scan-all":
-        return ["ecu", "scan-all"] + common + ["--line", line]
+        return ["ecu", "scan-all"] + common + ecu_sw + ["--line", line]
     if action == "read":
         block = block.strip()
         if not block:
             raise ValueError("Укажите блок: CAN «7E1:7E9» или адрес K-line «12»")
         key = "--can" if ":" in block or len(block) == 3 else "--kline"
-        return ["ecu", "read"] + common + [key, block, "--line", line]
+        return ["ecu", "read"] + common + ecu_sw + [key, block, "--line", line]
     raise ValueError(f"неизвестное действие {action}")
 
 
@@ -177,6 +189,7 @@ class App:
         self.demo = tk.BooleanVar(value=False)
         self.line = tk.StringVar(value="7")
         self.block = tk.StringVar(value="12")
+        self.switch = tk.BooleanVar(value=False)
         self.status = tk.StringVar(value="Готово")
 
         pad = {"padx": 6, "pady": 4}
@@ -208,7 +221,7 @@ class App:
         self._button(row1, "Найти все блоки", lambda: self.run("scan-all"))
         self._button(row1, "Живые параметры", lambda: self.run("live"))
         ttk.Label(row1, text="Контакт K-line:").pack(side="left", **pad)
-        ttk.Combobox(row1, textvariable=self.line, values=["7", "8", "9", "11"], width=4,
+        ttk.Combobox(row1, textvariable=self.line, values=["7", "8", "9", "11", ALL_LINES], width=8,
                      state="readonly").pack(side="left", **pad)
         row2 = ttk.Frame(act)
         row2.pack(fill="x")
@@ -217,6 +230,12 @@ class App:
                      values=["12", "7E1:7E9"]).pack(side="left", **pad)
         self._button(row2, "Прочитать блок", lambda: self.run("read"))
         ttk.Label(row2, text="12 — двигатель (K-line), 7E1:7E9 — АКПП (CAN)").pack(side="left", **pad)
+        row3 = ttk.Frame(act)
+        row3.pack(fill="x")
+        ttk.Checkbutton(row3, text="Авто-переключатель линий (Arduino, через мост)",
+                        variable=self.switch).pack(side="left", **pad)
+        self._button(row3, "Замер контактов", lambda: self.run("switch-meas"))
+        ttk.Label(row3, text="смена линии ~50 с; без делителей замер — шум").pack(side="left", **pad)
 
         tools = ttk.Frame(root)
         tools.pack(fill="x", **pad)
@@ -305,7 +324,7 @@ class App:
             return
         try:
             args = build_args(action, self._port(), self.baud.get().strip(), self.line.get(),
-                              self.block.get(), self.demo.get())
+                              self.block.get(), self.demo.get(), self.switch.get())
         except ValueError as e:
             messagebox.showwarning("vito_diag", str(e))
             return
@@ -370,7 +389,13 @@ class App:
             m = re.search(r"addr=([0-9a-fA-F:]{17})", state)
             if not m:
                 return state + "\nАдрес адаптера в мосте не сохранён."
-            return bridge_exchange(port, [(f"~USE {m.group(1)}", 15), ("AT RV", 2)])
+            from vito_diag.switch import DEFAULT_ELM, DEFAULT_HC06
+
+            addr = m.group(1)
+            if addr.lower() == DEFAULT_HC06:  # прерванная работа оставила мост на переключателе
+                addr = DEFAULT_ELM
+            # первое подключение после смены устройства у моста не проходит — сначала ~SCAN
+            return bridge_exchange(port, [("~SCAN", 13), (f"~USE {addr}", 15), ("AT RV", 2)])
 
         self._bridge("Переподключение адаптера", job)
 
