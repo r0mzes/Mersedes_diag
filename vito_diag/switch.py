@@ -6,10 +6,15 @@
 """
 
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 LINES = ("7", "8", "9", "11")
+
+# Наша сборка (docs/AUTO_SWITCH.md): HC-06 переключателя и ELM327 «OBD II».
+DEFAULT_HC06 = "98:d3:41:00:0f:55"
+DEFAULT_ELM = "01:2d:a1:86:68:c0"
 
 
 class SwitchError(Exception):
@@ -63,16 +68,27 @@ class LineSwitch:
             raise SwitchError(f"На порту {port} не переключатель OBD (ответ: {ident!r})")
         self.version = ident
 
+    def session(self):
+        """Группа команд (нужно мосту ESP32, по USB ничего не делает)."""
+        return nullcontext(self)
+
     def cmd(self, command: str, wait: float = 2.0) -> str:
         self.ser.reset_input_buffer()
         self.ser.write((command + "\n").encode("ascii"))
         buf = b""
+        text = ""
         deadline = time.time() + wait
-        while time.time() < deadline:
+        while time.time() < deadline and not text:
             buf += self.ser.read(self.ser.in_waiting or 1)
-            if b"\n" in buf:
-                break
-        text = buf.decode("ascii", errors="ignore").strip()
+            while b"\n" in buf:
+                raw, buf = buf.split(b"\n", 1)
+                line = raw.decode("ascii", errors="ignore").strip()
+                # строки моста ESP32 ("~DISCONNECTED" и т. п.) — не ответ переключателя
+                if line and not line.startswith("~"):
+                    text = line
+                    break
+        if not text:
+            text = buf.decode("ascii", errors="ignore").strip()
         if not text:
             raise SwitchError(f"Переключатель не ответил на {command}")
         if text.startswith("ERR"):
@@ -109,6 +125,170 @@ class LineSwitch:
                 self.cmd("RESET")
         finally:
             self.ser.close()
+
+
+class Bridge:
+    """Служебные команды моста ESP32 (firmware/esp32_obd_bridge): к кому он подключён."""
+
+    def __init__(self, ser, log=print):
+        self.ser = ser
+        self.log = log
+        self.scan_first = False
+
+    def _send(self, command: str) -> None:
+        self.ser.reset_input_buffer()
+        self.ser.write(("~" + command + "\n").encode("ascii"))
+
+    def _wait_line(self, prefixes: Tuple[str, ...], timeout: float) -> str:
+        buf = b""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            buf += self.ser.read(self.ser.in_waiting or 1)
+            while b"\n" in buf:
+                raw, buf = buf.split(b"\n", 1)
+                line = raw.decode("ascii", errors="ignore").strip()
+                if line.startswith(prefixes):
+                    return line
+        return ""
+
+    def state(self) -> Tuple[bool, str]:
+        """(подключён ли, сохранённый адрес)."""
+        self._send("STATE")
+        line = self._wait_line(("~STATE",), 3.0)
+        if not line:
+            raise SwitchError("Мост ESP32 не ответил на ~STATE — это точно порт моста?")
+        fields = dict(p.split("=", 1) for p in line.split()[1:] if "=" in p)
+        return fields.get("connected") == "1", fields.get("addr", "").lower()
+
+    def _scan(self) -> None:
+        self._send("SCAN")
+        self._wait_line(("~SCAN done", "~SCAN failed"), 20.0)
+
+    def use(self, addr: str, attempts: int = 3) -> None:
+        """Переключить мост на устройство addr. Если не вышло — ~SCAN и ещё раз:
+        после смены устройства первое подключение у моста обычно не проходит.
+        Раз так случилось, дальше ищем сразу, не дожидаясь отказа (экономит ~8 с)."""
+        if self.scan_first:
+            self._scan()
+        for i in range(attempts):
+            self._send("USE " + addr)
+            line = self._wait_line(("~CONNECTED", "~connect failed"), 25.0)
+            if line == "~CONNECTED":
+                time.sleep(0.5)
+                self.ser.reset_input_buffer()
+                return
+            self.scan_first = True
+            if i < attempts - 1:
+                self.log(f"  мост: нет связи с {addr}, ищу устройства и пробую ещё раз...")
+                self._scan()
+        raise SwitchError(f"Мост ESP32 не подключился к {addr} за {attempts} попытки")
+
+
+class BridgeSwitch(LineSwitch):
+    """Переключатель, к которому ходим через тот же мост ESP32, что и к ELM327.
+
+    Мост держит одно соединение, поэтому на время команд переключателя он
+    переподключается к HC-06, а потом обратно к адаптеру (~30 с на каждую смену).
+    Без связи с компьютером Arduino не сбрасывается: выбранная линия остаётся.
+    """
+
+    def __init__(self, ser, hc06: str = DEFAULT_HC06, elm: Optional[str] = None, log=print,
+                 identify: bool = True):
+        self.bridge = Bridge(ser, log)
+        self.hc06 = hc06.lower()
+        connected, addr = self.bridge.state()
+        if addr and addr != self.hc06:
+            elm = elm or addr
+        self.elm = (elm or DEFAULT_ELM).lower()
+        self.log = log
+        self.require_elm = True  # False — не ошибка, если адаптер не ответил (проверка на столе)
+        self._on_switch = False
+        self.ser = ser
+        self.line = None
+        self.version = None
+        self.last_state = ""
+        if identify:
+            with self.session():
+                pass  # ID и STATE спрашиваются при первом подключении
+
+    def _identify(self) -> None:
+        ident = LineSwitch.cmd(self, "ID", wait=5.0)
+        if not ident.startswith("OBDSW"):
+            raise SwitchError(f"HC-06 {self.hc06} ответил не как переключатель OBD: {ident!r}")
+        self.version = ident
+        self.last_state = LineSwitch.cmd(self, "STATE")
+        if self.last_state.startswith("STATE SEL"):
+            self.line = self.last_state.split()[2]
+
+    class _Session:
+        def __init__(self, sw):
+            self.sw = sw
+
+        def __enter__(self):
+            if not self.sw._on_switch:
+                self.sw.log("  мост: подключаюсь к переключателю...")
+                self.sw.bridge.use(self.sw.hc06)
+                time.sleep(1.0)  # первые байты после подключения HC-06 бывают мусорные
+                self.sw._on_switch = True
+                if self.sw.version is None:
+                    self.sw._identify()
+            return self.sw
+
+        def __exit__(self, exc_type, exc, tb):
+            self.sw._on_switch = False
+            self.sw.log("  мост: обратно к адаптеру...")
+            try:
+                self.sw.bridge.use(self.sw.elm)
+            except SwitchError as e:
+                if self.sw.require_elm and exc_type is None:
+                    raise
+                self.sw.log(f"  ! {e}. Мост будет сам пытаться подключиться к адаптеру.")
+            return False
+
+    def session(self):
+        """Несколько команд переключателю за одно подключение."""
+        if self._on_switch:
+            return LineSwitch.session(self)
+        return BridgeSwitch._Session(self)
+
+    def cmd(self, command: str, wait: float = 4.0) -> str:
+        with self.session():
+            return LineSwitch.cmd(self, command, wait=wait)
+
+    def select(self, line) -> None:
+        if str(line) == self.line:
+            return
+        with self.session():
+            LineSwitch.select(self, line)
+            self.last_state = LineSwitch.state(self)
+        self.line = str(line)
+
+    def state(self) -> str:
+        """Вне сеанса — последнее известное состояние (лишний раз к HC-06 не ходим)."""
+        if self._on_switch:
+            self.last_state = LineSwitch.state(self)
+        return self.last_state
+
+    def reset_adapter(self, off_seconds: float = 2.0) -> None:
+        with self.session():
+            LineSwitch.reset_adapter(self, off_seconds)
+
+    def close(self, restore: bool = True) -> None:
+        # порт общий с адаптером: закрывает его ElmLink (или cmd_switch)
+        if restore and self.line not in (None, "7"):
+            self.cmd("RESET")
+            self.line = "7"
+
+
+def is_bridge_spec(spec: Optional[str]) -> bool:
+    return bool(spec) and spec.lower().split(":", 1)[0] == "bt"
+
+
+def open_bridge_switch(spec: str, ser, log=print, identify: bool = True) -> BridgeSwitch:
+    """spec: 'bt' (HC-06 нашей сборки) или 'bt:aa:bb:cc:dd:ee:ff'."""
+    parts = spec.split(":", 1)
+    return BridgeSwitch(ser, hc06=parts[1] if len(parts) > 1 else DEFAULT_HC06, log=log,
+                        identify=identify)
 
 
 def open_switch(port: Optional[str]) -> Optional[LineSwitch]:
