@@ -217,7 +217,9 @@ def cmd_ecu(args):
                       "    Видны только блоки, отвечающие на общий OBD-запрос.")
             print(f"\n  найдено на CAN: {len(found)}")
             modules += found
-        if args.action in ("scan-kline", "scan-all"):
+        if args.action in ("scan-kline", "scan-all") and not link.has_kline:
+            print("Самодельный CAN-адаптер не работает с K-line — поиск на K-line пропущен.")
+        elif args.action in ("scan-kline", "scan-all"):
             addrs = _parse_addr_list(args.addrs) if args.addrs else range(0x01, 0xF0)
             print(f"Поиск блоков на K-line (контакт машины {args.line}). Это долго — до 10-20 минут...")
             found = link.scan_kline(addrs, line=args.line, slow=args.slow, progress=kline_progress)

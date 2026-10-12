@@ -120,6 +120,11 @@ class ElmLink:
         self.log("<< " + text.replace("\r", " | "))
         return text
 
+    @property
+    def has_kline(self) -> bool:
+        """Самодельный CAN-адаптер (firmware/esp32_can_adapter) работает только с CAN."""
+        return "vito-can" not in (self.version or "")
+
     def voltage(self) -> str:
         return self.cmd("ATRV")
 
