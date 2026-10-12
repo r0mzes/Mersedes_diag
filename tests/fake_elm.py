@@ -85,7 +85,7 @@ class CloneElm(FakeElm):
     и на K-line тоже игнорирует адрес."""
 
     def _answer(self, c):
-        if c == "ATFI":
+        if c in ("ATFI", "ATSI"):
             return "?"
         if c == "ATPC":
             self.kline_ok = False

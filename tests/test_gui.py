@@ -37,3 +37,13 @@ def test_saved_results(tmp_path):
     assert "блоков: 1, ошибок: 1 [P2232]" in items["modules_2026-09-30_22-22-37.json"][0]
     text = format_saved(tmp_path / "modules_2026-09-30_22-22-37.json")
     assert "K-line (конт. 7) 0x12" in text and "P2232 (статус 0x60" in text
+
+
+def test_build_args_with_bridge_switch():
+    from vito_diag.gui import ALL_LINES, build_args
+
+    assert build_args("scan-all", "COM7", line=ALL_LINES, switch=True) == \
+        ["ecu", "scan-all", "--port", "COM7", "--switch", "bt", "--line", ALL_LINES]
+    assert build_args("switch-meas", "COM7") == ["switch", "meas", "--switch", "bt", "--port", "COM7"]
+    with pytest.raises(ValueError):
+        build_args("scan-all", "COM7", line=ALL_LINES)  # все линии — только с переключателем
