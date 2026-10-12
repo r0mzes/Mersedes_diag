@@ -129,13 +129,15 @@ class ElmLink:
     def voltage(self) -> str:
         return self.cmd("ATRV")
 
-    def close(self):
+    def close(self, close_port: bool = True):
+        """close_port=False — порт общий (блок obd_hub), его закроет переключатель."""
         try:
             if self.mode == "kline":
                 self.cmd("ATPC")  # закрыть сессию K-line
             self.cmd("ATD")
         finally:
-            self.ser.close()
+            if close_port:
+                self.ser.close()
             self._log.close()
 
     def _guard(self, request: bytes):

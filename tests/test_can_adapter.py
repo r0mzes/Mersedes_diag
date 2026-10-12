@@ -150,3 +150,94 @@ def test_identify_not_truncated(link):
 
 def test_kline_not_supported(link):
     assert link.has_kline is False
+
+
+# ---- общий блок obd_hub: CAN + переключатель на одном порту ----------------------------
+
+class HubSerial:
+    """Порт блока obd_hub: строки с '\\r' — ядру CAN (имитация), с '\\n' — переключателю."""
+
+    def __init__(self, binary):
+        from tests.fake_switch import FakeSwitch
+
+        self.can = ProcessSerial(binary)
+        self.sw = FakeSwitch()
+        self.closed = False
+
+    @property
+    def in_waiting(self):
+        return self.sw.in_waiting + self.can.in_waiting
+
+    def read(self, n=1):
+        return self.sw.read(n) if self.sw.in_waiting else self.can.read(n)
+
+    def write(self, data):
+        (self.sw if data.endswith(b"\n") else self.can).write(data)
+
+    def reset_input_buffer(self):
+        self.sw.reset_input_buffer()
+        self.can.reset_input_buffer()
+
+    def close(self):
+        assert not self.closed, "порт блока закрыт дважды"
+        self.closed = True
+        self.can.close()
+
+
+def test_hub_shares_one_port(sim_binary, tmp_path):
+    from vito_diag.hub import Hub
+
+    ser = HubSerial(sim_binary)
+    hub = Hub("hub", ser=ser, log_dir=str(tmp_path))
+    assert hub.switch.version.startswith("OBDSW")
+    assert "vito-can" in hub.can.version
+    hub.switch.select(9)
+    payload = hub.can.can_request(0x7E1, 0x7E9, bytes.fromhex("1A86"))
+    assert len(payload) == 18
+    hub.close()
+    assert ser.closed and ser.sw.sent[-1] == "RESET"
+
+
+@pytest.fixture
+def hub_cli(sim_binary, tmp_path, monkeypatch):
+    from tests.fake_elm import FakeElm
+    from vito_diag.hub import Hub
+
+    ser = HubSerial(sim_binary)
+    monkeypatch.setattr("vito_diag.hub.Hub",
+                        lambda port, unsafe=False: Hub(port, ser=ser, log_dir=str(tmp_path)))
+    fake_elm = FakeElm()
+    monkeypatch.setattr("vito_diag.elm.ElmLink",
+                        lambda port, **kw: ElmLink(port, ser=fake_elm, log_dir=str(tmp_path), timeout=0.2))
+    return ser
+
+
+def test_cli_read_gearbox_through_hub(hub_cli, tmp_path):
+    from vito_diag import cli
+
+    assert cli.main(["ecu", "read", "--hub", "COM4", "--can", "7E1:7E9",
+                     "--reports-dir", str(tmp_path)]) == 0
+    report = next(tmp_path.glob("modules_*.json")).read_text(encoding="utf-8")
+    assert "обрезан" not in report and '"1A87"' in report
+    assert hub_cli.closed
+
+
+def test_cli_scan_all_hub_and_kline_adapter(hub_cli, tmp_path):
+    from vito_diag import cli
+
+    assert cli.main(["ecu", "scan-all", "--hub", "COM4", "--port", "COM7", "--line", "7,9",
+                     "--addrs", "10", "--start", "73E", "--end", "742",
+                     "--reports-dir", str(tmp_path)]) == 0
+    sels = [c for c in hub_cli.sw.sent if c.startswith("SEL")]
+    assert sels == ["SEL 7", "SEL 9"]  # реле переключает блок, по кабелю
+    assert hub_cli.sw.sent[-1] == "RESET"
+    report = next(tmp_path.glob("modules_*.json")).read_text(encoding="utf-8")
+    assert '"address": "0x740"' in report  # CAN — через блок
+    assert '"bus": "kline"' in report       # K-line — через ELM327
+
+
+def test_core_copies_identical():
+    """Arduino собирает только файлы из папки скетча, поэтому ядро лежит в двух копиях."""
+    a = ROOT / "firmware" / "esp32_can_adapter" / "elm_can_core.h"
+    b = ROOT / "firmware" / "obd_hub" / "elm_can_core.h"
+    assert a.read_bytes() == b.read_bytes(), "поправили одну копию elm_can_core.h — скопируйте во вторую"

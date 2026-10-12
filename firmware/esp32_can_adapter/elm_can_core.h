@@ -20,6 +20,22 @@
 
 #define ELM_CAN_VERSION "ELM327 v1.5 (vito-can 0.1)"
 
+// Размеры под память платы. На Arduino Uno (2 КБ ОЗУ) прошивка задаёт их меньше до #include.
+#ifndef ELM_MAX_PAYLOAD
+#define ELM_MAX_PAYLOAD 4095  // предел ISO-TP
+#endif
+#ifndef ELM_MAX_SESSIONS
+#define ELM_MAX_SESSIONS 2    // одновременно собираемых длинных ответов
+#endif
+#ifndef ELM_LINE_MAX
+#define ELM_LINE_MAX 128      // длина команды
+#endif
+// Минимальная пауза между кадрами длинного ответа (STmin в Flow Control), мс. Медленной плате
+// нужна передышка: у MCP2515 всего два приёмных буфера.
+#ifndef ELM_MIN_STMIN
+#define ELM_MIN_STMIN 0
+#endif
+
 struct CanFrame {
   uint32_t id = 0;
   bool ext = false;   // 29-битный ID (на OBD Mercedes W639 не встречается, только для ATMA)
@@ -45,15 +61,15 @@ class ElmCanIo {
 
 class ElmCan {
  public:
-  static const int MAX_PAYLOAD = 4095;  // предел ISO-TP
-  static const int MAX_SESSIONS = 2;    // одновременно собираемых длинных ответов
+  static const int MAX_PAYLOAD = ELM_MAX_PAYLOAD;
+  static const int MAX_SESSIONS = ELM_MAX_SESSIONS;
   static const uint32_t PENDING_MS = 5000;  // ждать после 7F xx 78 («ответ будет позже»)
 
   explicit ElmCan(ElmCanIo &io) : io_(io) { defaults(); }
 
   // Одна строка от ПК (без '\r'). Пустая строка повторяет предыдущую команду, как у ELM327.
   void handleLine(const char *raw) {
-    char line[128];
+    char line[ELM_LINE_MAX];
     size_t n = 0;
     for (const char *p = raw; *p && n < sizeof(line) - 1; p++) {
       if (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') continue;
@@ -101,7 +117,7 @@ class ElmCan {
   uint8_t fcData_[8];
   uint8_t fcLen_;
   int fcMode_;
-  char last_[128] = "";
+  char last_[ELM_LINE_MAX] = "";
   Session sessions_[MAX_SESSIONS];
 
   void defaults() {
@@ -239,7 +255,8 @@ class ElmCan {
       float volts = io_.batteryVolts();
       if (volts < 0) return line("?");
       char buf[16];
-      snprintf(buf, sizeof(buf), "%.1fV", volts);
+      int tenths = (int)(volts * 10 + 0.5f);  // без %f: на AVR printf не умеет float
+      snprintf(buf, sizeof(buf), "%d.%dV", tenths / 10, tenths % 10);
       line(buf);
     } else if (!strcmp(c, "FI") || !strcmp(c, "SI")) {
       line("BUS INIT: ...ERROR");  // K-line нет
@@ -281,10 +298,11 @@ class ElmCan {
     snprintf(buf, sizeof(buf), "%03X", s.total);
     line(buf);
     int idx = 0;
-    for (int pos = 0; pos < s.have; idx++) {
+    int have = s.have < MAX_PAYLOAD ? s.have : MAX_PAYLOAD;
+    for (int pos = 0; pos < have; idx++) {
       int chunk = pos == 0 ? 6 : 7;
       snprintf(buf, sizeof(buf), "%X:", idx & 0xF);
-      for (int i = pos; i < pos + chunk && i < s.have; i++) {
+      for (int i = pos; i < pos + chunk && i < have; i++) {
         size_t len = strlen(buf);
         snprintf(buf + len, sizeof(buf) - len, spaces_ ? " %02X" : "%02X", s.buf[i]);
       }
@@ -320,8 +338,9 @@ class ElmCan {
     if (fcMode_ == 1) {
       memcpy(fc.data, fcData_, fcLen_);
     } else {
-      fc.data[0] = 0x30;  // продолжай; размер блока 0 — всё сразу; паузы между кадрами нет
+      fc.data[0] = 0x30;  // продолжай; размер блока 0 — всё сразу
     }
+    if (fc.data[2] < ELM_MIN_STMIN) fc.data[2] = ELM_MIN_STMIN;
     return io_.canSend(fc);
   }
 
@@ -427,7 +446,11 @@ class ElmCan {
         }
         s->nextSn = (s->nextSn + 1) & 0x0F;
         int chunk = s->total - s->have < 7 ? s->total - s->have : 7;
-        memcpy(s->buf + s->have, f.data + 1, chunk);
+        for (int i = 0; i < chunk; i++) {
+          // Не влезло в память платы — дальше только считаем; напечатается заявленная длина
+          // и то, что поместилось, и vito_diag увидит обрезанный ответ.
+          if (s->have + i < MAX_PAYLOAD) s->buf[s->have + i] = f.data[1 + i];
+        }
         s->have += chunk;
         if (headers_) {
           printFrame(f, 0, f.len, true);
