@@ -176,17 +176,85 @@ def _save_modules(modules, args, extra=None):
     return path
 
 
+def _read_modules(link, modules, can_link=None):
+    from vito_diag.protocol import DiagError
+
+    for m in modules:
+        if m.bus == "can" and can_link is not None:
+            _read_modules(can_link, [m])
+            continue
+        try:
+            link.identify(m)
+            link.read_dtcs(m)
+        except DiagError as e:
+            m.error = str(e)
+        _print_module(m)
+
+
+def _select_line(link, sw, line):
+    """Перевести переключатель на контакт машины line (между запросами, не во время)."""
+    if sw is None:
+        return
+    if link.mode == "kline":
+        link.cmd("ATPC")
+    link.mode = None
+    link.target = None
+    sw.select(line)
+    print(f"Переключатель: контакт машины {line} -> контакт 7 адаптера")
+    time.sleep(0.3)
+
+
 def cmd_ecu(args):
     if args.demo:
         print("Команда ecu работает только с реальным адаптером.")
         return 1
-    if not args.port:
-        print("Укажите порт: --port COM3 (Windows) / /dev/ttyUSB0 (Linux)")
+    if not args.port and not args.hub:
+        print("Укажите порт: --port COM3 (Windows) / /dev/ttyUSB0 (Linux)"
+              " и/или --hub COM4 (общий блок obd_hub)")
         return 1
-    from vito_diag.elm import ElmLink
-    from vito_diag.protocol import DiagError, hex_bytes, parse_hex_request
+    if args.hub and args.switch:
+        print("С --hub переключатель уже в блоке: --switch не нужен.")
+        return 1
+    lines = [x.strip() for x in args.line.split(",") if x.strip()]
+    if len(lines) > 1 and (not (args.switch or args.hub) or args.action not in ("scan-kline", "scan-all")):
+        print("Несколько линий (--line 7,8,9,11) можно только для scan-kline/scan-all с --switch.")
+        return 1
+    from vito_diag.elm import ElmLink, open_serial
+    from vito_diag.protocol import hex_bytes, parse_hex_request
+    from vito_diag.switch import is_bridge_spec, open_bridge_switch, open_switch
 
-    link = ElmLink(args.port, baudrate=args.baudrate or 38400, unsafe=args.unsafe)
+    hub = None
+    if args.hub:
+        from vito_diag.hub import Hub
+
+        hub = Hub(args.hub, unsafe=args.unsafe)
+        print(f"Общий блок: {hub.switch.version}, {hub.switch.state()}; CAN: "
+              f"{hub.can.version.splitlines()[-1] if hub.can.version else '?'}")
+    bridged = is_bridge_spec(args.switch)
+    if hub and not args.port:
+        sw, link = hub.switch, hub.can  # только CAN и реле, K-line адаптера нет
+    elif bridged:
+        # переключатель на HC-06, а к нему ходим через тот же мост ESP32, что и к адаптеру
+        ser = open_serial(args.port, baudrate=args.baudrate or 38400, timeout=0.1)
+        try:
+            sw = open_bridge_switch(args.switch, ser)
+            link = ElmLink(args.port, unsafe=args.unsafe, ser=ser)
+        except Exception:
+            ser.close()
+            raise
+    else:
+        sw = hub.switch if hub else open_switch(args.switch)
+        if sw and not hub:
+            print(f"Переключатель: {sw.version}, {sw.state()}")
+        try:
+            link = ElmLink(args.port, baudrate=args.baudrate or 38400, unsafe=args.unsafe)
+        except Exception:
+            if hub:
+                hub.close()
+            elif sw:
+                sw.close()
+            raise
+    can_link = hub.can if hub else link
     print(f"Адаптер: {link.version.splitlines()[-1] if link.version else '?'};  "
           f"напряжение: {link.voltage()};  лог обмена: {link.log_path}")
     can_progress = (lambda a: print(f"\r  CAN ID 0x{a:03X}", end="", flush=True))
@@ -194,53 +262,142 @@ def cmd_ecu(args):
     modules = []
     try:
         if args.action == "monitor":
-            ids = link.monitor_can(args.seconds)
+            ids = can_link.monitor_can(args.seconds)
             if not ids:
                 print("На CAN (контакты 6/14) тишина — это нормально для отдельной диагностической шины.")
             for cid, n in sorted(ids.items()):
                 print(f"  0x{cid:03X}: {n} кадров")
             return 0
 
-        if args.action == "raw":
+        if args.action in ("raw", "read"):
+            args.line = lines[0]
             m = _module_from_args(args)
-            payload = link.request(m, parse_hex_request(args.request))
-            print(hex_bytes(payload))
-            return 0
-
-        if args.action == "read":
-            modules = [_module_from_args(args)]
+            if m.bus == "kline":
+                _select_line(link, sw, m.line)
+            if args.action == "raw":
+                payload = (can_link if m.bus == "can" else link).request(m, parse_hex_request(args.request))
+                print(hex_bytes(payload))
+                return 0
+            modules = [m]
+            _read_modules(link, modules, can_link)
         if args.action in ("scan-can", "scan-all"):
             print("Поиск блоков на CAN (контакты 6/14). Займёт несколько минут...")
-            found = link.scan_can(int(args.start, 16), int(args.end, 16), can_progress)
-            if link.can_header_ignored:
+            found = can_link.scan_can(int(args.start, 16), int(args.end, 16), can_progress)
+            if can_link.can_header_ignored:
                 print("\n  ! Адаптер игнорирует адрес запроса (ATSH) — перебор CAN ID пропущен.\n"
                       "    Видны только блоки, отвечающие на общий OBD-запрос.")
             print(f"\n  найдено на CAN: {len(found)}")
+            _read_modules(can_link, found)
             modules += found
-        if args.action in ("scan-kline", "scan-all"):
+        if args.action in ("scan-kline", "scan-all") and not link.has_kline:
+            print("Самодельный CAN-адаптер не работает с K-line — поиск на K-line пропущен.")
+        elif args.action in ("scan-kline", "scan-all"):
             addrs = _parse_addr_list(args.addrs) if args.addrs else range(0x01, 0xF0)
-            print(f"Поиск блоков на K-line (контакт машины {args.line}). Это долго — до 10-20 минут...")
-            found = link.scan_kline(addrs, line=args.line, slow=args.slow, progress=kline_progress)
-            print(f"\n  найдено на K-line: {len(found)}")
-            modules += found
-
-        for m in modules:
-            try:
-                link.identify(m)
-                link.read_dtcs(m)
-            except DiagError as e:
-                m.error = str(e)
-            _print_module(m)
+            for line in lines:
+                _select_line(link, sw, line)
+                print(f"Поиск блоков на K-line (контакт машины {line}). Это долго — до 10-20 минут...")
+                found = link.scan_kline(addrs, line=line, slow="only" if args.slow_only else args.slow,
+                                       progress=kline_progress)
+                print(f"\n  найдено на K-line (конт. {line}): {len(found)}")
+                _read_modules(link, found)
+                modules += found
     finally:
-        link.close()
+        if hub:
+            try:
+                if link is not hub.can:
+                    link.close()
+            finally:
+                hub.close()
+        elif bridged:
+            # сначала вернуть линию 7 (порт общий), потом закрыть адаптер
+            try:
+                if link.mode == "kline":
+                    link.cmd("ATPC")
+                link.mode = None
+                sw.close()
+            finally:
+                link.close()
+        else:
+            link.close()
+            if sw:
+                sw.close()
 
     if modules and not args.no_save:
-        path = _save_modules(modules, args, {"log": str(link.log_path), "kline_pin": args.line})
+        path = _save_modules(modules, args, {"log": str(link.log_path), "kline_pin": ",".join(lines),
+                                             "auto_switch": bool(args.switch or args.hub)})
         print(f"\nРезультат: {path}\nЛог обмена: {link.log_path}")
     all_dtcs = [d for m in modules for d in m.dtcs]
     if all_dtcs:
         print_report({"Режим": "опрос блоков (ELM327 напрямую)"}, analyze([], [], extra_dtcs=all_dtcs))
     return 0
+
+
+def cmd_switch(args):
+    from vito_diag.switch import LineSwitch, is_bridge_spec, open_bridge_switch
+
+    if not args.switch:
+        print("Укажите порт переключателя: --switch COM7 (или --switch bt --port COM7 через мост ESP32)")
+        return 1
+    ser = None
+    if is_bridge_spec(args.switch):
+        if not args.port:
+            print("Через мост ESP32 нужен ещё порт моста: --switch bt --port COM7")
+            return 1
+        from vito_diag.elm import open_serial
+
+        ser = open_serial(args.port, baudrate=38400, timeout=0.1)
+        try:
+            sw = open_bridge_switch(args.switch, ser, identify=False)  # всё за одно подключение
+            sw.require_elm = False  # на столе адаптер может быть не подключён
+        except Exception:
+            ser.close()
+            raise
+    else:
+        sw = LineSwitch(args.switch)
+    restore = True
+    try:
+        with sw.session():
+            print(f"Переключатель: {sw.version}")
+            restore = _switch_action(sw, args, bridged=ser is not None)
+        if ser is not None:
+            restore = False  # через мост Arduino не сбрасывается: линию меняем только явно
+    finally:
+        sw.close(restore=restore)
+        if ser is not None:
+            ser.close()
+    return 0
+
+
+def _switch_action(sw, args, bridged=False):
+    """Выполнить действие cmd_switch; возвращает, нужно ли потом вернуть линию 7."""
+    restore = True
+    if args.action == "state":
+        print(sw.state())
+    elif args.action == "sel":
+        sw.select(args.value or "7")
+        restore = False
+        print(sw.state())
+        if not bridged:
+            print("Внимание: после отключения от переключателя он сам вернёт линию 7.")
+        else:
+            print("Линия останется выбранной, пока её не сменить или не отключить питание Arduino.")
+    elif args.action == "can":
+        sw.can_pair((args.value or "std").lower() == "alt")
+        restore = False
+        print(sw.state())
+    elif args.action == "reset-adapter":
+        sw.reset_adapter()
+        print("Питание адаптера передёрнуто. ESP32-мост переподключится сам через несколько секунд.")
+    elif args.action == "meas":
+        for _ in range(max(1, args.count)):
+            readings = sw.measure()
+            print(f"{'конт.':>5}  {'среднее':>8} {'мин':>6} {'макс':>6}  догадка")
+            for pin, r in readings.items():
+                print(f"{pin:>5}  {r.avg:>7.2f}В {r.lo:>6.2f} {r.hi:>6.2f}  {r.verdict()}")
+            if args.count > 1:
+                print()
+                time.sleep(1)
+    return restore
 
 
 def cmd_lookup(args):
@@ -302,15 +459,32 @@ def build_parser():
     e.add_argument("--can", help="блок на CAN: ID запроса[:ID ответа], hex (например 7E0:7E8)")
     e.add_argument("--kline", help="блок на K-line: адрес, hex (например 10)")
     e.add_argument("--line", default="7",
-                   help="какой контакт машины сейчас выбран переключателем (7, 8, 9, 11) — для отчёта")
+                   help="контакт машины для K-line (7, 8, 9, 11). С --switch можно список: 7,8,9,11")
+    e.add_argument("--switch", help="порт автоматического переключателя линий (Arduino), например COM7; "
+                                    "bt — переключатель на HC-06 через тот же мост ESP32, что и адаптер")
+    e.add_argument("--hub", help="порт общего блока obd_hub (Arduino: CAN через MCP2515 + реле линий), "
+                                 "например COM4; K-line — по-прежнему через --port")
     e.add_argument("--start", default="400", help="scan-can: начальный CAN ID (hex)")
     e.add_argument("--end", default="7FF", help="scan-can: конечный CAN ID (hex)")
     e.add_argument("--addrs", help="scan-kline: адреса, hex (например '01-3F,58')")
     e.add_argument("--slow", action="store_true", help="scan-kline: пробовать и медленную 5-бод инициализацию")
+    e.add_argument("--slow-only", action="store_true",
+                   help="scan-kline: только медленная 5-бод инициализация (быструю уже проверили)")
     e.add_argument("--seconds", type=float, default=5.0, help="monitor: сколько секунд слушать")
     e.add_argument("--unsafe", action="store_true",
                    help="разрешить запросы, меняющие данные в блоках (НЕ использовать без необходимости)")
     e.set_defaults(func=cmd_ecu)
+
+    w = sub.add_parser("switch", help="автоматический переключатель линий: замер контактов, выбор линии")
+    w.add_argument("action", choices=["state", "meas", "sel", "can", "reset-adapter"],
+                   help="meas — напряжения на контактах; sel 9 — линия; can std|alt — пара CAN; "
+                        "reset-adapter — передёрнуть питание ELM327")
+    w.add_argument("value", nargs="?", help="для sel: 7/8/9/11; для can: std/alt")
+    w.add_argument("--switch", help="порт переключателя (Arduino), например COM7; "
+                                    "bt — через мост ESP32 (нужен --port моста)")
+    w.add_argument("--port", help="с --switch bt: порт моста ESP32, например COM7")
+    w.add_argument("--count", type=int, default=1, help="meas: сколько замеров подряд")
+    w.set_defaults(func=cmd_switch)
 
     g = sub.add_parser("gui", help="окно с кнопками (для тех, кто не любит командную строку)")
     g.set_defaults(func=cmd_gui)
