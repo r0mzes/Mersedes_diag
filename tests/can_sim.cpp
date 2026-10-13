@@ -8,8 +8,14 @@
 //
 // Сборка: g++ -std=c++17 -I firmware/esp32_can_adapter tests/can_sim.cpp -o can_sim
 
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#include <windows.h>
+#else
 #include <poll.h>
 #include <unistd.h>
+#endif
 
 #include <chrono>
 #include <deque>
@@ -93,8 +99,15 @@ class Sim : public ElmCanIo {
   uint32_t now() override { return nowMs(); }
 
   bool inputPending() override {
+#ifdef _WIN32
+    // stdin — канал от тестов (subprocess); poll() на Windows нет
+    DWORD avail = 0;
+    return PeekNamedPipe(GetStdHandle(STD_INPUT_HANDLE), nullptr, 0, nullptr, &avail, nullptr) &&
+           avail > 0;
+#else
     pollfd p{0, POLLIN, 0};
     return poll(&p, 1, 0) > 0;
+#endif
   }
 
   void discardInput() override {
@@ -176,6 +189,11 @@ class Sim : public ElmCanIo {
 };
 
 int main() {
+#ifdef _WIN32
+  // без этого Windows заменяет \n на \r\n в выводе
+  _setmode(_fileno(stdin), _O_BINARY);
+  _setmode(_fileno(stdout), _O_BINARY);
+#endif
   Sim sim;
   ElmCan elm(sim);
   std::string line;
