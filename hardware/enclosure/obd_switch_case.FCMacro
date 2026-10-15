@@ -6,7 +6,8 @@
 # (или открыть файл и нажать «Выполнить макрос»). Создаётся документ «OBD_Case»:
 #   Base  — основание (печатать дном вниз),
 #   Lid   — крышка (печатать верхом вниз, т.е. как она лежит после переворота),
-#   Board_* — полупрозрачные «призраки» плат для проверки компоновки (не печатать).
+#   Boards  — модели плат на стойках (Uno с шилдом HC-06, реле, MCP2515, понижайка,
+#             делители) для проверки компоновки, не печатать.
 # Если задать EXPORT_DIR, рядом сохранятся STEP и STL основания и крышки.
 #
 # Без GUI: freecadcmd obd_switch_case.FCMacro  (STEP/STL пишутся в папку макроса).
@@ -44,7 +45,7 @@ POST_D = 6.5       # стойки под платы
 POST_PILOT = 2.6   # отверстие в стойке под саморез M2.5/M3
 POST_H = 6.0       # высота стоек (плата над дном)
 
-# Платы: (имя, x, y, размер X, размер Y, высота модуля для «призрака», [отверстия
+# Платы: (имя, x, y, размер X, размер Y, габаритная высота (справочно), [отверстия
 # относительно левого нижнего угла платы]). x, y — положение угла платы от наружного
 # угла корпуса.
 UNO_X = WALL + 6.5                 # USB-B Uno выступает за край платы на ~6 мм
@@ -82,7 +83,7 @@ HOLES = [
 LID_HOLES = [  # отверстия в крышке: (x, y, диаметр), например окошко под светодиод
 ]
 
-SHOW_GHOSTS = True
+SHOW_BOARDS = True  # модели плат (только для проверки компоновки, не печатать)
 EXPORT_DIR = None   # None — не сохранять в GUI; в freecadcmd — папка макроса
 # ======================================================================
 
@@ -163,25 +164,135 @@ def make_lid():
     return lid.removeSplitter()
 
 
+# ----------------------------- модели плат -----------------------------
+# Каждая плата строится в своих координатах: (0,0,0) — левый нижний угол низа PCB.
+# Размеры компонентов типовые (Uno — по чертежу Arduino), детали мельче 2 мм опущены.
+PCB_T = 1.6
+C_PCB_BLUE = (0.05, 0.35, 0.60)
+C_PCB_GREEN = (0.10, 0.45, 0.20)
+C_BLACK = (0.08, 0.08, 0.08)
+C_METAL = (0.75, 0.75, 0.78)
+C_TERM = (0.15, 0.45, 0.85)
+C_RELAY = (0.10, 0.25, 0.75)
+C_GOLD = (0.85, 0.70, 0.20)
+
+
+def box(x, y, z, sx, sy, sz):
+    return Part.makeBox(sx, sy, sz, V(x, y, z))
+
+
+def cyl(x, y, z, d, h, axis=(0, 0, 1)):
+    return Part.makeCylinder(d / 2, h, V(x, y, z), V(*axis))
+
+
+def pcb_with_holes(sx, sy, holes, d=3.2):
+    s = box(0, 0, 0, sx, sy, PCB_T)
+    for hx, hy in holes:
+        s = s.cut(cyl(hx, hy, -1, d, PCB_T + 2))
+    return s
+
+
+def parts_uno(sx, sy, holes):
+    t = PCB_T
+    hdr = 8.5  # высота гребёнок «мама»
+    p = [("PCB", pcb_with_holes(sx, sy, holes), C_PCB_BLUE),
+         ("USB_B", box(-6.2, 38.1 - 6.0, t, 16.0, 12.0, 10.9), C_METAL),
+         ("DC_jack", box(-1.8, 3.3, t, 14.5, 9.0, 11.0), C_BLACK),
+         ("ATmega328", box(31.0, 21.0, t, 35.0, 7.6, 4.2), C_BLACK),
+         ("Hdr_D8_13", box(17.27, 49.53, t, 25.4, 2.54, hdr), C_BLACK),
+         ("Hdr_D0_7", box(44.45, 49.53, t, 20.32, 2.54, hdr), C_BLACK),
+         ("Hdr_Power", box(26.67, 1.27, t, 20.32, 2.54, hdr), C_BLACK),
+         ("Hdr_A0_5", box(49.53, 1.27, t, 15.24, 2.54, hdr), C_BLACK),
+         ("Reset", box(2.0, 47.0, t, 6.0, 6.0, 4.0), C_METAL)]
+    # прото-шилд с HC-06 на гребёнках
+    z = t + hdr
+    p += [("Shield_PCB", box(0, 0, z, sx, sy, PCB_T), C_PCB_GREEN),
+          ("Shield_pins", box(17.27, 49.53, z + PCB_T, 47.5, 2.54, 8.5), C_BLACK),
+          ("HC06", box(20.0, 18.0, z + PCB_T, 37.0, 16.0, 6.0), C_PCB_BLUE)]
+    return p
+
+
+def parts_relay(sx, sy, holes):
+    t = PCB_T
+    return [("PCB", pcb_with_holes(sx, sy, holes), C_PCB_BLUE),
+            ("Relay_JQC3FF", box((sx - 15.5) / 2, 13.0, t, 15.5, 19.0, 15.4), C_RELAY),
+            ("Terminal_3p", box((sx - 15.0) / 2, sy - 9.0, t, 15.0, 7.5, 10.0), C_TERM),
+            ("Pins_3p", box((sx - 7.6) / 2, 1.5, t, 7.6, 2.54, 8.5), C_BLACK),
+            ("Opto_LED", box(4.0, 6.0, t, 4.5, 6.5, 3.0), C_BLACK)]
+
+
+def parts_mcp2515(sx, sy, holes):
+    t = PCB_T
+    return [("PCB", pcb_with_holes(sx, sy, holes), C_PCB_BLUE),
+            ("MCP2515", box(14.0, 13.0, t, 10.0, 7.5, 2.5), C_BLACK),
+            ("TJA1050", box(27.0, 14.0, t, 5.0, 6.0, 1.7), C_BLACK),
+            ("Crystal", box(13.0, 4.5, t, 11.0, 4.6, 3.5), C_METAL),
+            ("Terminal_CAN", box(sx - 8.5, 9.0, t, 7.5, 10.0, 10.0), C_TERM),
+            ("Pins_7p", box(1.5, 5.1, t, 2.54, 17.8, 8.5), C_BLACK)]
+
+
+def parts_buck(sx, sy, holes):
+    t = PCB_T
+    return [("PCB", pcb_with_holes(sx, sy, holes), C_PCB_BLUE),
+            ("Inductor", box(15.0, 4.5, t, 12.0, 12.0, 7.0), C_BLACK),
+            ("Cap_in", cyl(7.5, 10.5, t, 8.0, 10.0), C_BLACK),
+            ("Cap_out", cyl(35.5, 10.5, t, 8.0, 10.0), C_BLACK),
+            ("LM2596", box(28.5, 13.5, t, 10.0, 6.0, 4.5), C_BLACK),
+            ("Trimmer", box(28.0, 2.0, t, 9.5, 4.5, 10.0), C_TERM)]
+
+
+def parts_dividers(sx, sy, holes):
+    t = PCB_T
+    p = [("PCB", pcb_with_holes(sx, sy, holes), C_GOLD),
+         ("Pins_8p", box(7.0, sy - 5.0, t, 20.3, 2.54, 8.5), C_BLACK)]
+    for i in range(6):  # 6 делителей 10k/2.2k, резисторы лёжа
+        x = 6.0 + i * 5.0
+        p.append(("R%d_top" % (i + 1), cyl(x, 6.0, t + 1.3, 2.4, 6.5, (0, 1, 0)), (0.80, 0.70, 0.50)))
+        p.append(("R%d_bot" % (i + 1), cyl(x, 14.0, t + 1.3, 2.4, 6.5, (0, 1, 0)), (0.30, 0.55, 0.80)))
+    return p
+
+
+BOARD_PARTS = {"Uno": parts_uno, "Relay": parts_relay, "MCP2515": parts_mcp2515,
+               "Buck": parts_buck, "Dividers": parts_dividers}
+
+
+def board_parts(name, sx, sy, holes):
+    for key, fn in BOARD_PARTS.items():
+        if name.startswith(key):
+            return fn(sx, sy, holes)
+    return [("PCB", pcb_with_holes(sx, sy, holes), C_PCB_GREEN)]
+
+
+def make_boards(doc):
+    """Платы на стойках: группа на каждую плату, в ней — компоненты."""
+    grp = doc.addObject("App::DocumentObjectGroup", "Boards")
+    objs = []
+    for name, bx, by, sx, sy, _, holes in BOARDS:
+        g = doc.addObject("App::DocumentObjectGroup", "Board_" + name)
+        grp.addObject(g)
+        for part, shape, color in board_parts(name, sx, sy, holes):
+            shape.translate(V(bx, by, FLOOR + POST_H))
+            o = doc.addObject("Part::Feature", name + "_" + part)
+            o.Shape = shape
+            g.addObject(o)
+            objs.append((o, color))
+    return objs
+
+
 def build(doc):
     base = doc.addObject("Part::Feature", "Base")
     base.Shape = make_base()
     lid = doc.addObject("Part::Feature", "Lid")
     lid.Shape = make_lid()
-    ghosts = []
-    if SHOW_GHOSTS:
-        for name, bx, by, sx, sy, sh, _ in BOARDS:
-            g = doc.addObject("Part::Feature", "Board_" + name)
-            g.Shape = Part.makeBox(sx, sy, sh, V(bx, by, FLOOR + POST_H))
-            ghosts.append(g)
+    boards = make_boards(doc) if SHOW_BOARDS else []
     doc.recompute()
     if App.GuiUp:
         base.ViewObject.ShapeColor = (0.25, 0.25, 0.28)
+        base.ViewObject.Transparency = 40
         lid.ViewObject.ShapeColor = (0.35, 0.35, 0.40)
-        lid.ViewObject.Transparency = 60
-        for g in ghosts:
-            g.ViewObject.ShapeColor = (0.1, 0.55, 0.25)
-            g.ViewObject.Transparency = 50
+        lid.ViewObject.Transparency = 75
+        for o, color in boards:
+            o.ViewObject.ShapeColor = color
     return base, lid
 
 
