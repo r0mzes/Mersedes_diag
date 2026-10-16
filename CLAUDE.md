@@ -41,7 +41,8 @@
 - **Общий блок obd_hub** (в работе, docs/OBD_HUB.md, `firmware/obd_hub`): Uno по USB (115200) +
   MCP2515/TJA1050 (кварц 8 МГц, J1 без перемычки) на CAN 6/14 + реле линий D2/D3/D4/D7 + делители
   10к/2,2к на A0–A5. HC-06 снят. vito_diag: `ecu … --hub COMx` (CAN и реле через блок, K-line —
-  ELM327 на `--port`), `switch … --switch COMx`. Ещё не собран и не проверен на машине.
+  ELM327 на `--port`), `switch … --switch COMx`. Собран и проверен на столе 2026-10-16 (реле, MCP2515,
+делители), на машине ещё не был. Меню для машины — `car_hub_windows.bat`.
 - **Самодельный CAN-адаптер** (в работе, docs/CAN_ADAPTER.md, `firmware/esp32_can_adapter`): ESP32 TWAI +
   SN65HVD230 на OBD 6/14, для ПК — ELM327 «vito-can» на 38400, который выполняет `ATSH`/`ATCRA` и
   собирает длинные ответы (Flow Control). Только CAN, K-line нет. Ядро проверяется тестом
