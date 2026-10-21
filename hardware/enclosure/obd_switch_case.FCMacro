@@ -1,0 +1,325 @@
+# -*- coding: utf-8 -*-
+# Корпус переключателя линий OBD / obd_hub (Uno + шилд HC-06 + 4 реле + MCP2515 +
+# понижайка + плата делителей). Параметрический: все размеры — в блоке ПАРАМЕТРЫ.
+#
+# Запуск в FreeCAD: Макросы → Макросы… → выбрать этот файл → Выполнить
+# (или открыть файл и нажать «Выполнить макрос»). Создаётся документ «OBD_Case»:
+#   Base  — основание (печатать дном вниз),
+#   Lid   — крышка (печатать верхом вниз, т.е. как она лежит после переворота),
+#   Boards  — модели плат на стойках (Uno с шилдом HC-06, реле, MCP2515, понижайка,
+#             делители) для проверки компоновки, не печатать.
+# Если задать EXPORT_DIR, рядом сохранятся STEP и STL основания и крышки.
+#
+# Без GUI: freecadcmd obd_switch_case.FCMacro  (STEP/STL пишутся в папку макроса).
+#
+# Оси: X — вдоль длины (0 — левая стенка, там USB Uno), Y — вглубь (0 — передняя
+# стенка, там тумблер), Z — вверх (0 — низ дна). Размеры плат модулей (реле,
+# MCP2515, понижайка, делители) взяты типовые — ПРОВЕРЬТЕ штангенциркулем свои
+# и поправьте BOARDS перед печатью.
+
+import os
+import FreeCAD as App
+import Part
+from FreeCAD import Vector as V
+
+# ============================== ПАРАМЕТРЫ ==============================
+L = 200.0          # наружная длина
+W = 120.0          # наружная ширина
+H_BASE = 72.0      # высота основания (с дном)
+WALL = 2.5         # толщина стенок
+FLOOR = 3.0        # толщина дна
+R_OUT = 6.0        # радиус скругления вертикальных углов снаружи
+
+LID_T = 3.0        # толщина крышки
+LIP_H = 4.0        # высота бортика крышки, входящего в основание
+LIP_W = 1.6        # толщина бортика
+LIP_GAP = 0.3      # зазор бортика до стенки
+
+BOSS_D = 9.0       # бобышки под винты крышки в углах
+SCREW_PILOT = 2.6  # отверстие под саморез M3 (2.5–2.8 для PETG)
+SCREW_DEPTH = 14.0
+LID_HOLE = 3.4     # отверстие в крышке под M3
+LID_CSK = 6.5      # диаметр зенковки (0 — без зенковки)
+
+POST_D = 6.5       # стойки под платы
+POST_PILOT = 2.6   # отверстие в стойке под саморез M2.5/M3
+POST_H = 6.0       # высота стоек (плата над дном)
+
+# Платы: (имя, x, y, размер X, размер Y, габаритная высота (справочно), [отверстия
+# относительно левого нижнего угла платы]). x, y — положение угла платы от наружного
+# угла корпуса.
+UNO_X = WALL + 6.5                 # USB-B Uno выступает за край платы на ~6 мм
+UNO_Y = W - WALL - 53.34 - 9.5     # отступ от задней стенки: мимо угловой бобышки
+RELAY = (26.0, 50.0, [(3.0, 3.0), (23.0, 47.0)])   # модуль 1 реле, повернут: 26 по X
+RELAY_X0, RELAY_Y0, RELAY_PITCH = 62.0, 4.0, 29.0
+BOARDS = [
+    ("Uno", UNO_X, UNO_Y, 68.58, 53.34, 35.0,
+     [(13.97, 2.54), (15.24, 50.80), (66.04, 7.62), (66.04, 35.56)]),
+    ("MCP2515", 13.0, 5.0, 44.0, 28.0, 14.0,
+     [(2.5, 2.5), (41.5, 2.5), (2.5, 25.5), (41.5, 25.5)]),
+    ("Buck_12to5", 88.0, 90.0, 43.0, 21.0, 14.0,
+     [(3.5, 3.5), (39.5, 17.5)]),
+    ("Dividers", 134.0, 68.0, 40.0, 30.0, 10.0,
+     [(2.5, 2.5), (37.5, 2.5), (2.5, 27.5), (37.5, 27.5)]),
+] + [
+    ("Relay%d" % (i + 1), RELAY_X0 + i * RELAY_PITCH, RELAY_Y0, RELAY[0], RELAY[1], 19.0,
+     RELAY[2])
+    for i in range(4)
+]
+
+# Отверстия в стенках: (стенка, вид, положение вдоль стенки, высота центра Z, размер)
+#   стенка: "left" (x=0), "right" (x=L), "front" (y=0), "back" (y=W)
+#   вид: "circle" -> размер = диаметр; "rect" -> размер = (ширина, высота)
+UNO_PCB_TOP = FLOOR + POST_H + 1.6
+HOLES = [
+    # USB-B Uno прямо в левой стенке (окно под вилку с литым корпусом)
+    ("left", "rect", UNO_Y + 38.1, UNO_PCB_TOP + 5.5, (17.0, 14.0)),
+    # гермовводы PG9 (резьба 15,2 мм): кабель к OBD машины и к адаптеру
+    ("right", "circle", 35.0, 36.0, 15.6),
+    ("right", "circle", 85.0, 36.0, 15.6),
+    # тумблер MTS-102 в разрыв D0/D1 к HC-06 (прошивка без снятия шилда)
+    ("front", "circle", 30.0, 48.0, 6.2),
+]
+LID_HOLES = [  # отверстия в крышке: (x, y, диаметр), например окошко под светодиод
+]
+
+SHOW_BOARDS = True  # модели плат (только для проверки компоновки, не печатать)
+EXPORT_DIR = None   # None — не сохранять в GUI; в freecadcmd — папка макроса
+# ======================================================================
+
+
+def rounded_box(l, w, h, r, x=0.0, y=0.0, z=0.0):
+    """Брусок со скруглёнными вертикальными рёбрами."""
+    r = max(0.01, min(r, l / 2 - 0.01, w / 2 - 0.01))
+    s = Part.makeBox(l - 2 * r, w, h, V(x + r, y, z))
+    s = s.fuse(Part.makeBox(l, w - 2 * r, h, V(x, y + r, z)))
+    for cx, cy in ((r, r), (l - r, r), (r, w - r), (l - r, w - r)):
+        s = s.fuse(Part.makeCylinder(r, h, V(x + cx, y + cy, z)))
+    return s.removeSplitter()
+
+
+def boss_centers():
+    o = WALL + BOSS_D / 2 - 0.5
+    return [(o, o), (L - o, o), (o, W - o), (L - o, W - o)]
+
+
+def wall_cut(wall, kind, pos, zc, size):
+    depth = WALL * 4
+    if kind == "circle":
+        d = size
+        if wall in ("left", "right"):
+            x = -WALL if wall == "left" else L - 3 * WALL
+            return Part.makeCylinder(d / 2, depth, V(x, pos, zc), V(1, 0, 0))
+        y = -WALL if wall == "front" else W - 3 * WALL
+        return Part.makeCylinder(d / 2, depth, V(pos, y, zc), V(0, 1, 0))
+    w, h = size
+    if wall in ("left", "right"):
+        x = -WALL if wall == "left" else L - 3 * WALL
+        return Part.makeBox(depth, w, h, V(x, pos - w / 2, zc - h / 2))
+    y = -WALL if wall == "front" else W - 3 * WALL
+    return Part.makeBox(w, depth, h, V(pos - w / 2, y, zc - h / 2))
+
+
+def make_base():
+    body = rounded_box(L, W, H_BASE, R_OUT)
+    body = body.cut(rounded_box(L - 2 * WALL, W - 2 * WALL, H_BASE, R_OUT - WALL,
+                                WALL, WALL, FLOOR))
+    for cx, cy in boss_centers():
+        body = body.fuse(Part.makeCylinder(BOSS_D / 2, H_BASE - FLOOR, V(cx, cy, FLOOR)))
+    for _, bx, by, _, _, _, holes in BOARDS:
+        for hx, hy in holes:
+            body = body.fuse(Part.makeCylinder(POST_D / 2, POST_H, V(bx + hx, by + hy, FLOOR - 0.01)))
+    for cx, cy in boss_centers():
+        body = body.cut(Part.makeCylinder(SCREW_PILOT / 2, SCREW_DEPTH,
+                                          V(cx, cy, H_BASE - SCREW_DEPTH)))
+    for _, bx, by, _, _, _, holes in BOARDS:
+        for hx, hy in holes:  # пилот в стойке, в дне остаётся 1 мм
+            body = body.cut(Part.makeCylinder(POST_PILOT / 2, POST_H + FLOOR - 1.0,
+                                              V(bx + hx, by + hy, 1.0)))
+    for h in HOLES:
+        body = body.cut(wall_cut(*h))
+    return body.removeSplitter()
+
+
+def make_lid():
+    """Крышка в положении сборки: низ пластины на высоте H_BASE."""
+    z0 = H_BASE
+    lid = rounded_box(L, W, LID_T, R_OUT, 0, 0, z0)
+    off = WALL + LIP_GAP
+    lip = rounded_box(L - 2 * off, W - 2 * off, LIP_H, R_OUT - off, off, off, z0 - LIP_H)
+    off2 = off + LIP_W
+    lip = lip.cut(rounded_box(L - 2 * off2, W - 2 * off2, LIP_H, R_OUT - off2, off2, off2,
+                              z0 - LIP_H))
+    for cx, cy in boss_centers():
+        lip = lip.cut(Part.makeCylinder(BOSS_D / 2 + 0.6, LIP_H, V(cx, cy, z0 - LIP_H)))
+    lid = lid.fuse(lip)
+    for cx, cy in boss_centers():
+        lid = lid.cut(Part.makeCylinder(LID_HOLE / 2, LID_T + 1, V(cx, cy, z0 - 0.5)))
+        if LID_CSK > LID_HOLE:
+            depth = (LID_CSK - LID_HOLE) / 2
+            lid = lid.cut(Part.makeCone(LID_HOLE / 2, LID_CSK / 2, depth + 0.01,
+                                        V(cx, cy, z0 + LID_T - depth)))
+    for x, y, d in LID_HOLES:
+        lid = lid.cut(Part.makeCylinder(d / 2, LID_T + 1, V(x, y, z0 - 0.5)))
+    return lid.removeSplitter()
+
+
+# ----------------------------- модели плат -----------------------------
+# Каждая плата строится в своих координатах: (0,0,0) — левый нижний угол низа PCB.
+# Размеры компонентов типовые (Uno — по чертежу Arduino), детали мельче 2 мм опущены.
+PCB_T = 1.6
+C_PCB_BLUE = (0.05, 0.35, 0.60)
+C_PCB_GREEN = (0.10, 0.45, 0.20)
+C_BLACK = (0.08, 0.08, 0.08)
+C_METAL = (0.75, 0.75, 0.78)
+C_TERM = (0.15, 0.45, 0.85)
+C_RELAY = (0.10, 0.25, 0.75)
+C_GOLD = (0.85, 0.70, 0.20)
+
+
+def box(x, y, z, sx, sy, sz):
+    return Part.makeBox(sx, sy, sz, V(x, y, z))
+
+
+def cyl(x, y, z, d, h, axis=(0, 0, 1)):
+    return Part.makeCylinder(d / 2, h, V(x, y, z), V(*axis))
+
+
+def pcb_with_holes(sx, sy, holes, d=3.2):
+    s = box(0, 0, 0, sx, sy, PCB_T)
+    for hx, hy in holes:
+        s = s.cut(cyl(hx, hy, -1, d, PCB_T + 2))
+    return s
+
+
+def parts_uno(sx, sy, holes):
+    t = PCB_T
+    hdr = 8.5  # высота гребёнок «мама»
+    p = [("PCB", pcb_with_holes(sx, sy, holes), C_PCB_BLUE),
+         ("USB_B", box(-6.2, 38.1 - 6.0, t, 16.0, 12.0, 10.9), C_METAL),
+         ("DC_jack", box(-1.8, 3.3, t, 14.5, 9.0, 11.0), C_BLACK),
+         ("ATmega328", box(31.0, 21.0, t, 35.0, 7.6, 4.2), C_BLACK),
+         ("Hdr_D8_13", box(17.27, 49.53, t, 25.4, 2.54, hdr), C_BLACK),
+         ("Hdr_D0_7", box(44.45, 49.53, t, 20.32, 2.54, hdr), C_BLACK),
+         ("Hdr_Power", box(26.67, 1.27, t, 20.32, 2.54, hdr), C_BLACK),
+         ("Hdr_A0_5", box(49.53, 1.27, t, 15.24, 2.54, hdr), C_BLACK),
+         ("Reset", box(2.0, 47.0, t, 6.0, 6.0, 4.0), C_METAL)]
+    # прото-шилд с HC-06 на гребёнках
+    z = t + hdr
+    p += [("Shield_PCB", box(0, 0, z, sx, sy, PCB_T), C_PCB_GREEN),
+          ("Shield_pins", box(17.27, 49.53, z + PCB_T, 47.5, 2.54, 8.5), C_BLACK),
+          ("HC06", box(20.0, 18.0, z + PCB_T, 37.0, 16.0, 6.0), C_PCB_BLUE)]
+    return p
+
+
+def parts_relay(sx, sy, holes):
+    t = PCB_T
+    return [("PCB", pcb_with_holes(sx, sy, holes), C_PCB_BLUE),
+            ("Relay_JQC3FF", box((sx - 15.5) / 2, 13.0, t, 15.5, 19.0, 15.4), C_RELAY),
+            ("Terminal_3p", box((sx - 15.0) / 2, sy - 9.0, t, 15.0, 7.5, 10.0), C_TERM),
+            ("Pins_3p", box((sx - 7.6) / 2, 1.5, t, 7.6, 2.54, 8.5), C_BLACK),
+            ("Opto_LED", box(4.0, 6.0, t, 4.5, 6.5, 3.0), C_BLACK)]
+
+
+def parts_mcp2515(sx, sy, holes):
+    t = PCB_T
+    return [("PCB", pcb_with_holes(sx, sy, holes), C_PCB_BLUE),
+            ("MCP2515", box(14.0, 13.0, t, 10.0, 7.5, 2.5), C_BLACK),
+            ("TJA1050", box(27.0, 14.0, t, 5.0, 6.0, 1.7), C_BLACK),
+            ("Crystal", box(13.0, 4.5, t, 11.0, 4.6, 3.5), C_METAL),
+            ("Terminal_CAN", box(sx - 8.5, 9.0, t, 7.5, 10.0, 10.0), C_TERM),
+            ("Pins_7p", box(1.5, 5.1, t, 2.54, 17.8, 8.5), C_BLACK)]
+
+
+def parts_buck(sx, sy, holes):
+    t = PCB_T
+    return [("PCB", pcb_with_holes(sx, sy, holes), C_PCB_BLUE),
+            ("Inductor", box(15.0, 4.5, t, 12.0, 12.0, 7.0), C_BLACK),
+            ("Cap_in", cyl(7.5, 10.5, t, 8.0, 10.0), C_BLACK),
+            ("Cap_out", cyl(35.5, 10.5, t, 8.0, 10.0), C_BLACK),
+            ("LM2596", box(28.5, 13.5, t, 10.0, 6.0, 4.5), C_BLACK),
+            ("Trimmer", box(28.0, 2.0, t, 9.5, 4.5, 10.0), C_TERM)]
+
+
+def parts_dividers(sx, sy, holes):
+    t = PCB_T
+    p = [("PCB", pcb_with_holes(sx, sy, holes), C_GOLD),
+         ("Pins_8p", box(7.0, sy - 5.0, t, 20.3, 2.54, 8.5), C_BLACK)]
+    for i in range(6):  # 6 делителей 10k/2.2k, резисторы лёжа
+        x = 6.0 + i * 5.0
+        p.append(("R%d_top" % (i + 1), cyl(x, 6.0, t + 1.3, 2.4, 6.5, (0, 1, 0)), (0.80, 0.70, 0.50)))
+        p.append(("R%d_bot" % (i + 1), cyl(x, 14.0, t + 1.3, 2.4, 6.5, (0, 1, 0)), (0.30, 0.55, 0.80)))
+    return p
+
+
+BOARD_PARTS = {"Uno": parts_uno, "Relay": parts_relay, "MCP2515": parts_mcp2515,
+               "Buck": parts_buck, "Dividers": parts_dividers}
+
+
+def board_parts(name, sx, sy, holes):
+    for key, fn in BOARD_PARTS.items():
+        if name.startswith(key):
+            return fn(sx, sy, holes)
+    return [("PCB", pcb_with_holes(sx, sy, holes), C_PCB_GREEN)]
+
+
+def make_boards(doc):
+    """Платы на стойках: группа на каждую плату, в ней — компоненты."""
+    grp = doc.addObject("App::DocumentObjectGroup", "Boards")
+    objs = []
+    for name, bx, by, sx, sy, _, holes in BOARDS:
+        g = doc.addObject("App::DocumentObjectGroup", "Board_" + name)
+        grp.addObject(g)
+        for part, shape, color in board_parts(name, sx, sy, holes):
+            shape.translate(V(bx, by, FLOOR + POST_H))
+            o = doc.addObject("Part::Feature", name + "_" + part)
+            o.Shape = shape
+            g.addObject(o)
+            objs.append((o, color))
+    return objs
+
+
+def build(doc):
+    base = doc.addObject("Part::Feature", "Base")
+    base.Shape = make_base()
+    lid = doc.addObject("Part::Feature", "Lid")
+    lid.Shape = make_lid()
+    boards = make_boards(doc) if SHOW_BOARDS else []
+    doc.recompute()
+    if App.GuiUp:
+        base.ViewObject.ShapeColor = (0.25, 0.25, 0.28)
+        base.ViewObject.Transparency = 40
+        lid.ViewObject.ShapeColor = (0.35, 0.35, 0.40)
+        lid.ViewObject.Transparency = 75
+        for o, color in boards:
+            o.ViewObject.ShapeColor = color
+    return base, lid
+
+
+def export(base, lid, folder):
+    import Mesh
+    # крышку для печати переворачиваем верхом вниз и опускаем на стол
+    printable = lid.Shape.copy()
+    printable.rotate(V(L / 2, W / 2, H_BASE), V(1, 0, 0), 180)
+    printable.translate(V(0, 0, -printable.BoundBox.ZMin))
+    for name, shape in (("obd_case_base", base.Shape), ("obd_case_lid", printable)):
+        shape.exportStep(os.path.join(folder, name + ".step"))
+        mesh = Mesh.Mesh(shape.tessellate(0.05))
+        mesh.write(os.path.join(folder, name + ".stl"))
+
+
+doc = App.newDocument("OBD_Case")
+base, lid = build(doc)
+folder = EXPORT_DIR
+if folder is None and not App.GuiUp:
+    try:
+        folder = os.path.dirname(os.path.abspath(__file__))
+    except NameError:
+        folder = os.getcwd()
+if folder:
+    export(base, lid, folder)
+    doc.saveAs(os.path.join(folder, "obd_case.FCStd"))
+if App.GuiUp:
+    import FreeCADGui as Gui
+    Gui.SendMsgToActiveView("ViewFit")
+    Gui.activeDocument().activeView().viewIsometric()
