@@ -9,3 +9,9 @@ reports/*
 logs/*
 !logs/.gitkeep
 *.FCBak
+
+# секреты и локальные настройки не коммитим
+.env
+*.env
+secrets.h
+wifi_secrets.h

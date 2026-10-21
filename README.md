@@ -15,6 +15,24 @@
 
 ---
 
+## Быстрый старт (Windows)
+
+1. Python 3.9+ с галочкой «Add Python to PATH».
+2. `git clone https://github.com/r0mzes/Mersedes_diag.git` (ветка `claude/mercedes-vito-diagnostics-1fgsio`).
+3. Двойной щелчок по **`install_windows.bat`** — создаст `.venv`, поставит библиотеки, покажет демо-отчёт.
+4. Запуск:
+   * **`gui_windows.bat`** — окно с кнопками (порт, скан двигателя, поиск блоков, живые параметры);
+   * **`scan_windows.bat`** — быстрый скан ошибок двигателя через ELM327;
+   * **`car_hub_windows.bat`** — меню опроса через блок `obd_hub` (Arduino Uno по USB + ELM327 по Bluetooth),
+     см. [docs/OBD_HUB.md](docs/OBD_HUB.md). Порты по умолчанию HUB=COM4, ELM327=COM6, спрашиваются при запуске.
+5. Отчёты появляются в `reports/` (HTML открыть в браузере), лог обмена с адаптером — в `logs/`.
+   Примеры отчётов — в `samples/reports/`.
+
+Текущее состояние работ и итоги последних замеров (Vito, Sprinter 1G 19.10) — в [CLAUDE.md](CLAUDE.md)
+и [docs/SESSION_LOG.md](docs/SESSION_LOG.md). База знаний по Mercedes — [docs/knowledge/](docs/knowledge/README.md).
+
+---
+
 ## 1. Что купить
 
 | Вариант | Что это | Что даёт |
@@ -186,12 +204,23 @@ vito_diag/
   elm.py          прямая работа с ELM327: CAN/K-line, поиск блоков, KWP2000/UDS, лог обмена
   protocol.py     разбор ответов ELM327, KWP2000, UDS; список разрешённых (читающих) запросов
 tests/            тесты (pytest)
-firmware/
-  esp32_obd_bridge/ мост USB ↔ Bluetooth к адаптеру на ESP32 (docs/ESP32_BRIDGE.md)
+  hub.py          работа с блоком obd_hub (реле линий, замеры, CAN через MCP2515)
+  switch.py       переключатель линий OBD (7/8/9/11)
+tests/            тесты (pytest), симуляторы адаптера и переключателя, can_sim.cpp
+firmware/         скетчи Arduino/ESP32 (открывать в Arduino IDE или arduino-cli)
+  obd_hub/              основной блок: Uno + MCP2515 + реле линий (docs/OBD_HUB.md)
+  esp32_obd_bridge/     мост USB ↔ Bluetooth к адаптеру на ESP32 (docs/ESP32_BRIDGE.md)
+  esp32_can_adapter/    CAN-адаптер на ESP32 (docs/CAN_ADAPTER.md)
+  obd_switch*/          переключатель линий: USB, Bluetooth HC-06, реле, Wi-Fi (docs/AUTO_SWITCH.md, docs/WIFI_SWITCH.md)
+  hc06_role/, hc06_slave/ настройка модуля HC-06
+hardware/enclosure/   корпус переключателя: макрос FreeCAD, FCStd, STEP/STL для печати
 tools/
   esp_terminal.ps1       отправить строки в COM-порт и показать ответ (проверка моста)
+  check_esp32.ps1        проверка ESP32
   flash_esp32_bridge.bat прошить мост через arduino-cli
-docs/photos/elm327_board/ фото платы адаптера
+docs/knowledge/   база знаний: распиновки, блоки W639, протоколы, адаптеры, источники
+docs/photos/      фото платы ELM327, делителей, платы реле LC X4
+samples/reports/  примеры отчётов
 ```
 
 Добавить свой код в базу — допишите запись в `vito_diag/data/dtc_ru.json`:
