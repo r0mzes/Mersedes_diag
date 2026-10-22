@@ -136,3 +136,18 @@ def test_clone_slow_init_without_atsi(tmp_path):
     assert [m.address for m in found] == [0x10]
     assert link.no_slow_init
     assert "ATIIA10" in fake.sent
+
+
+def test_ecu_catalog_and_1a86():
+    from vito_diag.ecus import decode_1a86, find_ecu
+
+    egs = bytes.fromhex("5A86003446411048060708080353000807 01".replace(" ", ""))
+    info = decode_1a86(list(egs))
+    assert info["part"] == "A 003 446 41 10"
+    assert info["hw"] == "неделя 48/2006" and info["sw"] == "неделя 7/2008"
+    assert info["diag_variant"] == "0x0353" and info["produced"] == "2008-07-01"
+    assert find_ecu("can", 0x7E1, 0x7E9)["short"] == "EGS"
+    assert find_ecu("can", 0x999, part_number="A 639 545 02 01 (?)")["short"] == "SAM"
+    assert find_ecu("can", 0x999) is None
+    assert Module("can", 0x5B4, 0x4F4).title == "Приборная панель (Kombi)"
+    assert Module("can", 0x736, 0x4F5).title.endswith("(не подтверждено)")

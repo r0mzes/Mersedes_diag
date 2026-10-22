@@ -144,10 +144,20 @@ def _module_from_args(args):
     raise ValueError("Укажите блок: --can 7E0[:7E8] или --kline 10")
 
 
+def _format_ident(ident):
+    names = (("hw", "железо"), ("sw", "ПО"), ("supplier", "поставщик"),
+             ("diag_variant", "вариант диагностики"), ("produced", "выпущен"))
+    return ", ".join(f"{label} {ident[key]}" for key, label in names if ident.get(key))
+
+
 def _print_module(m):
     print(f"\n■ {m.name}  протокол: {m.protocol or '?'}")
+    if m.title:
+        print(f"    блок: {m.title}")
     if m.part_number:
         print(f"    номер детали: {m.part_number}")
+    if m.ident:
+        print("    " + _format_ident(m.ident))
     if m.ident_text:
         print(f"    идентификация: {m.ident_text}")
     for req, raw in m.ident_raw.items():

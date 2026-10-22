@@ -26,6 +26,19 @@ _NOISE = re.compile(r"^WARNING:pint\.util")
 ALL_LINES = "7,8,9,11"
 
 
+def _catalog_title(m):
+    """Название блока для отчётов, сохранённых до появления справочника."""
+    from vito_diag.ecus import ecu_title, find_ecu
+
+    try:
+        reply = int(m["reply"], 16) if m.get("reply") else 0
+        e = find_ecu(m["bus"], int(m["address"], 16), reply, m.get("line", "7"),
+                     m.get("part_number", ""))
+    except (KeyError, ValueError):
+        return ""
+    return ecu_title(e)
+
+
 def build_args(action: str, port: str = "", baudrate: str = "", line: str = "7",
                block: str = "", demo: bool = False, switch: bool = False) -> list:
     """Аргументы python -m vito_diag для кнопки окна.
@@ -120,6 +133,9 @@ def format_saved(path: Path) -> str:
         else:
             name = f"K-line (конт. {m.get('line', '7')}) {m['address']}"
         out.append(f"\n■ {name}  протокол: {m.get('protocol') or '?'}")
+        title = m.get("title") or _catalog_title(m)
+        if title:
+            out.append(f"    блок: {title}")
         if m.get("part_number"):
             out.append(f"    номер детали: {m['part_number']}")
         for note in m.get("notes", []):
