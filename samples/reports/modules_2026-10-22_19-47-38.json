@@ -1,0 +1,1430 @@
+{
+  "created": "2026-10-22T19:47:38",
+  "modules": [
+    {
+      "bus": "can",
+      "address": "0x440",
+      "reply": "0x5FF",
+      "line": "7",
+      "protocol": "",
+      "part_number": "",
+      "ident_text": "",
+      "ident_raw": {},
+      "error": "kwp: NO DATA; uds: NO DATA",
+      "notes": [],
+      "dtcs": []
+    },
+    {
+      "bus": "can",
+      "address": "0x441",
+      "reply": "0x5FF",
+      "line": "7",
+      "protocol": "",
+      "part_number": "",
+      "ident_text": "",
+      "ident_raw": {},
+      "error": "kwp: NO DATA; uds: NO DATA",
+      "notes": [],
+      "dtcs": []
+    },
+    {
+      "bus": "can",
+      "address": "0x4E0",
+      "reply": "0x5FF",
+      "line": "7",
+      "protocol": "kwp",
+      "part_number": "A 639 545 21 08",
+      "ident_text": "6395452108",
+      "ident_raw": {
+        "1A87": "5A 87 01 43 00 00 00 07 02 07 12 00 36 33 39 35 34 35 32 31 30 38"
+      },
+      "error": "",
+      "notes": [],
+      "dtcs": [
+        {
+          "code": "B1009",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 21 08",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9009",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1007",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 21 08",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9007",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1011",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 21 08",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9011",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1005",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 21 08",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9005",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1001",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 21 08",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9001",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1006",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 21 08",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9006",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "bus": "can",
+      "address": "0x5B4",
+      "reply": "0x4F4",
+      "line": "7",
+      "protocol": "kwp",
+      "part_number": "A 639 446 43 21 (?)",
+      "ident_text": "6394464321 | AAAAAAAAAAAAAAAAA",
+      "ident_raw": {
+        "1A86": "5A 86 63 94 46 43 21 17 06 14 07 20 01 00 00 08 08 21",
+        "1A87": "5A 87 01 20 01 00 FF 06 17 07 14 10 36 33 39 34 34 36 34 33 32 31",
+        "1A90": "5A 90 41 41 41 41 41 41 41 41 41 41 41 41 41 41 41 41 41"
+      },
+      "error": "",
+      "notes": [],
+      "dtcs": []
+    },
+    {
+      "bus": "can",
+      "address": "0x662",
+      "reply": "0x4E2",
+      "line": "7",
+      "protocol": "kwp",
+      "part_number": "A 639 545 02 01 (?)",
+      "ident_text": "",
+      "ident_raw": {
+        "1A86": "5A 86 63 95 45 02 01 33 04 33 04 21 83 12 FF 08 07 15",
+        "1A87": "5A 87 63 95 45 02 01 33 04 33 04 21 83 12 FF 08 07 15",
+        "1A90": "5A 90 63 95 45 02 01 33 04 33 04 21 83 12 FF 08 07 15"
+      },
+      "error": "",
+      "notes": [],
+      "dtcs": [
+        {
+          "code": "B1000",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9000",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1001",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9001",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1002",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9002",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1006",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9006",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1007",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9007",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1008",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9008",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1009",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9009",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B100B",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "900B",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B100F",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "900F",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1012",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9012",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1013",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9013",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1016",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9016",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B101F",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "901F",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1020",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9020",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1021",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9021",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1022",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9022",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1023",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9023",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1024",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9024",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1028",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9028",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1029",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9029",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B102D",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "902D",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B102E",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "902E",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B102F",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "902F",
+            "status_byte": "0x60",
+            "status": [
+              "состояние: сохранена и присутствует"
+            ]
+          }
+        },
+        {
+          "code": "B1032",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9032",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1034",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9034",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1037",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9037",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B103A",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "903A",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B103B",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 02 01 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "903B",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "bus": "can",
+      "address": "0x6A5",
+      "reply": "0x4E5",
+      "line": "7",
+      "protocol": "kwp",
+      "part_number": "A 639 545 44 07 (?)",
+      "ident_text": "",
+      "ident_raw": {
+        "1A86": "5A 86 63 95 45 44 07 23 06 31 04 43 00 01 00 08 07 15",
+        "1A87": "5A 87 63 95 45 44 07 23 06 31 04 43 00 01 00 08 07 15",
+        "1A90": "5A 90 63 95 45 44 07 23 06 31 04 43 00 01 00 08 07 15"
+      },
+      "error": "",
+      "notes": [],
+      "dtcs": [
+        {
+          "code": "B100C",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 44 07 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "900C",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1020",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 44 07 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9020",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1021",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 44 07 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9021",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1023",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 44 07 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9023",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1026",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 44 07 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9026",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1027",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 44 07 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9027",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1036",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 545 44 07 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9036",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "bus": "can",
+      "address": "0x6BC",
+      "reply": "0x4FC",
+      "line": "7",
+      "protocol": "kwp",
+      "part_number": "A 906 446 14 42 (?)",
+      "ident_text": "9064461442",
+      "ident_raw": {
+        "1A86": "5A 86 90 64 46 14 42 14 07 14 07 03 0D 04 00 08 07 16",
+        "1A87": "5A 87 01 03 0D 04 FF 07 14 07 14 00 39 30 36 34 34 36 31 34 34 32"
+      },
+      "error": "",
+      "notes": [],
+      "dtcs": [
+        {
+          "code": "B1003",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 906 446 14 42 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9003",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "bus": "can",
+      "address": "0x6C8",
+      "reply": "0x4E8",
+      "line": "7",
+      "protocol": "kwp",
+      "part_number": "A 639 820 10 26 (?)",
+      "ident_text": "",
+      "ident_raw": {
+        "1A86": "5A 86 63 98 20 10 26 12 04 12 04 21 83 09 FF 08 06 20",
+        "1A87": "5A 87 63 98 20 10 26 12 04 12 04 21 83 09 FF 08 06 20",
+        "1A90": "5A 90 63 98 20 10 26 12 04 12 04 21 83 09 FF 08 06 20"
+      },
+      "error": "",
+      "notes": [],
+      "dtcs": [
+        {
+          "code": "B1004",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 820 10 26 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9004",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1009",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 820 10 26 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9009",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B100A",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 820 10 26 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "900A",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B100C",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 820 10 26 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "900C",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1010",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 820 10 26 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9010",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B101A",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 820 10 26 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "901A",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "bus": "can",
+      "address": "0x6CA",
+      "reply": "0x4EA",
+      "line": "7",
+      "protocol": "kwp",
+      "part_number": "A 639 820 12 26 (?)",
+      "ident_text": "",
+      "ident_raw": {
+        "1A86": "5A 86 63 98 20 12 26 12 04 12 04 21 83 09 FF 08 06 13",
+        "1A87": "5A 87 63 98 20 12 26 12 04 12 04 21 83 09 FF 08 06 13",
+        "1A90": "5A 90 63 98 20 12 26 12 04 12 04 21 83 09 FF 08 06 13"
+      },
+      "error": "",
+      "notes": [],
+      "dtcs": [
+        {
+          "code": "B1006",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 820 12 26 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9006",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1009",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 820 12 26 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9009",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B100C",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 820 12 26 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "900C",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1016",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 820 12 26 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9016",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1017",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 820 12 26 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9017",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B101A",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 820 12 26 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "901A",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "bus": "can",
+      "address": "0x736",
+      "reply": "0x4F5",
+      "line": "7",
+      "protocol": "kwp",
+      "part_number": "A 639 446 12 29 (?)",
+      "ident_text": "6394461229",
+      "ident_raw": {
+        "1A86": "5A 86 63 94 46 12 29 46 05 46 05 54 02 01 00 08 08 21",
+        "1A87": "5A 87 01 54 02 01 FF 05 46 05 46 00 36 33 39 34 34 36 31 32 32 39"
+      },
+      "error": "",
+      "notes": [],
+      "dtcs": [
+        {
+          "code": "B1070",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 446 12 29 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9070",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1021",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 446 12 29 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9021",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1040",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 446 12 29 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9040",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "B1028",
+          "description": "Кузов (SAM, свет, климат, подушки); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Кузов (SAM, свет, климат, подушки)",
+          "source": "ecu",
+          "ecu": "A 639 446 12 29 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "9028",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "bus": "can",
+      "address": "0x784",
+      "reply": "0x785",
+      "line": "7",
+      "protocol": "kwp",
+      "part_number": "A 000 446 00 53 (?)",
+      "ident_text": "0004460053 | WDF63960313475655",
+      "ident_raw": {
+        "1A86": "5A 86 00 04 46 00 53 17 07 48 07 03 01 02 00 08 06 14",
+        "1A87": "5A 87 01 03 01 02 FF 07 17 07 48 00 30 30 30 34 34 36 30 30 35 33",
+        "1A90": "5A 90 57 44 46 36 33 39 36 30 33 31 33 34 37 35 36 35 35"
+      },
+      "error": "",
+      "notes": [],
+      "dtcs": [
+        {
+          "code": "C11C1",
+          "description": "Шасси (ABS, ESP, подвеска, 4MATIC); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "chassis",
+          "system": "Шасси (ABS, ESP, подвеска, 4MATIC)",
+          "source": "ecu",
+          "ecu": "A 000 446 00 53 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "51C1",
+            "status_byte": "0xA0",
+            "status": [
+              "состояние: текущая (не подтверждена)",
+              "горит лампа"
+            ]
+          }
+        },
+        {
+          "code": "C04AC",
+          "description": "Шасси (ABS, ESP, подвеска, 4MATIC)",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "chassis",
+          "system": "Шасси (ABS, ESP, подвеска, 4MATIC)",
+          "source": "ecu",
+          "ecu": "A 000 446 00 53 (?)",
+          "manufacturer_specific": false,
+          "extra": {
+            "raw": "44AC",
+            "status_byte": "0xE0",
+            "status": [
+              "состояние: сохранена и присутствует",
+              "горит лампа"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "bus": "can",
+      "address": "0x791",
+      "reply": "0x4F1",
+      "line": "7",
+      "protocol": "",
+      "part_number": "",
+      "ident_text": "",
+      "ident_raw": {},
+      "error": "kwp: Блок отклонил запрос 0x18: NRC 0x80 (неизвестно); uds: Блок отклонил запрос 0x19: NRC 0x80 (неизвестно)",
+      "notes": [],
+      "dtcs": []
+    },
+    {
+      "bus": "can",
+      "address": "0x7E0",
+      "reply": "0x7E8",
+      "line": "7",
+      "protocol": "kwp",
+      "part_number": "A 002 446 84 40 (?)",
+      "ident_text": "0024468440 | WDF63960313475655",
+      "ident_raw": {
+        "1A86": "5A 86 00 24 46 84 40 41 04 48 06 03 42 1D 00 08 06 25",
+        "1A87": "5A 87 01 03 42 1D FF 04 41 06 48 00 30 30 32 34 34 36 38 34 34 30",
+        "1A90": "5A 90 57 44 46 36 33 39 36 30 33 31 33 34 37 35 36 35 35"
+      },
+      "error": "",
+      "notes": [],
+      "dtcs": [
+        {
+          "code": "P2232",
+          "description": "Силовой агрегат (двигатель, КПП)",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Силовой агрегат (двигатель, КПП)",
+          "source": "ecu",
+          "ecu": "A 002 446 84 40 (?)",
+          "manufacturer_specific": false,
+          "extra": {
+            "raw": "2232",
+            "status_byte": "0x60",
+            "status": [
+              "состояние: сохранена и присутствует"
+            ]
+          }
+        },
+        {
+          "code": "P2067",
+          "description": "Силовой агрегат (двигатель, КПП)",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Силовой агрегат (двигатель, КПП)",
+          "source": "ecu",
+          "ecu": "A 002 446 84 40 (?)",
+          "manufacturer_specific": false,
+          "extra": {
+            "raw": "2067",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "P2068",
+          "description": "Силовой агрегат (двигатель, КПП)",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Силовой агрегат (двигатель, КПП)",
+          "source": "ecu",
+          "ecu": "A 002 446 84 40 (?)",
+          "manufacturer_specific": false,
+          "extra": {
+            "raw": "2068",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        },
+        {
+          "code": "P2141",
+          "description": "Силовой агрегат (двигатель, КПП)",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "other",
+          "system": "Силовой агрегат (двигатель, КПП)",
+          "source": "ecu",
+          "ecu": "A 002 446 84 40 (?)",
+          "manufacturer_specific": false,
+          "extra": {
+            "raw": "2141",
+            "status_byte": "0x20",
+            "status": [
+              "состояние: текущая (не подтверждена)"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "bus": "can",
+      "address": "0x7E1",
+      "reply": "0x7E9",
+      "line": "7",
+      "protocol": "kwp",
+      "part_number": "A 003 446 41 10 (?)",
+      "ident_text": "0034464110 | 00000000000000000",
+      "ident_raw": {
+        "1A86": "5A 86 00 34 46 41 10 48 06 07 08 08 03 53 00 08 07 01",
+        "1A87": "5A 87 03 08 03 53 FF 06 48 08 07 00 30 30 33 34 34 36 34 31 31 30",
+        "1A90": "5A 90 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30"
+      },
+      "error": "",
+      "notes": [],
+      "dtcs": [
+        {
+          "code": "U140B",
+          "description": "Сеть обмена данными (CAN); код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "network",
+          "system": "Сеть обмена данными (CAN)",
+          "source": "ecu",
+          "ecu": "A 003 446 41 10 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "D40B",
+            "status_byte": "0x60",
+            "status": [
+              "состояние: сохранена и присутствует"
+            ]
+          }
+        },
+        {
+          "code": "P1731",
+          "description": "Силовой агрегат (двигатель, КПП); Трансмиссия; код производителя (Mercedes) — точная расшифровка в Xentry/DAS",
+          "severity": "unknown",
+          "advice": "Код отсутствует в локальной базе — уточните по сервисной документации.",
+          "group": "transmission",
+          "system": "Силовой агрегат (двигатель, КПП)",
+          "source": "ecu",
+          "ecu": "A 003 446 41 10 (?)",
+          "manufacturer_specific": true,
+          "extra": {
+            "raw": "1731",
+            "status_byte": "0x70",
+            "status": [
+              "состояние: сохранена и присутствует"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "log": "logs\\elm_2026-10-22_19-24-02.log",
+  "kline_pin": "7,9,11",
+  "auto_switch": true
+}

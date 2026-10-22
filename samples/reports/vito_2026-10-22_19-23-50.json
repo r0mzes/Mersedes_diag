@@ -1,0 +1,135 @@
+{
+  "created": "2026-10-22T19:23:50",
+  "vehicle": {
+    "Порт": "COM7",
+    "Протокол": "ISO 9141-2 (3)",
+    "Статус": "Car Connected",
+    "Check Engine (MIL)": "не горит",
+    "Кол-во ошибок (по ЭБУ)": "4"
+  },
+  "verdict": "Есть серьёзные ошибки — нужна диагностика в ближайшее время.",
+  "dtcs": [
+    {
+      "code": "P0201",
+      "description": "Цепь форсунки цилиндра 1",
+      "severity": "high",
+      "advice": "Проводка/разъём форсунки 1, сама форсунка.",
+      "group": "fuel",
+      "system": "Силовой агрегат (двигатель, КПП)",
+      "source": "stored",
+      "ecu": "",
+      "manufacturer_specific": false
+    },
+    {
+      "code": "P0730",
+      "description": "Неверное передаточное отношение",
+      "severity": "high",
+      "advice": "Уровень и состояние масла АКПП, гидроблок.",
+      "group": "transmission",
+      "system": "Силовой агрегат (двигатель, КПП)",
+      "source": "stored",
+      "ecu": "",
+      "manufacturer_specific": false
+    },
+    {
+      "code": "P0100",
+      "description": "Цепь датчика массового расхода воздуха (MAF)",
+      "severity": "medium",
+      "advice": "Разъём и проводка ДМРВ.",
+      "group": "air",
+      "system": "Силовой агрегат (двигатель, КПП)",
+      "source": "stored",
+      "ecu": "",
+      "manufacturer_specific": false
+    },
+    {
+      "code": "P0102",
+      "description": "Низкий сигнал датчика MAF",
+      "severity": "medium",
+      "advice": "Проводка, питание ДМРВ, сам датчик.",
+      "group": "air",
+      "system": "Силовой агрегат (двигатель, КПП)",
+      "source": "stored",
+      "ecu": "",
+      "manufacturer_specific": false
+    }
+  ],
+  "findings": [
+    {
+      "title": "Ошибки коробки передач",
+      "codes": [
+        "P0730"
+      ],
+      "advice": "Двигатель лишь сообщает о проблеме в КПП. Подробные коды хранятся в блоке КПП — найдите и прочитайте его командой `ecu scan-all` (при необходимости через переключатель K-line).",
+      "severity": "high"
+    }
+  ],
+  "live": {
+    "RPM": {
+      "label": "Обороты двигателя",
+      "value": 801.0,
+      "unit": "rpm"
+    },
+    "SPEED": {
+      "label": "Скорость",
+      "value": 0.0,
+      "unit": "kph"
+    },
+    "COOLANT_TEMP": {
+      "label": "Температура ОЖ",
+      "value": 62.0,
+      "unit": "°C"
+    },
+    "INTAKE_TEMP": {
+      "label": "Температура воздуха на впуске",
+      "value": 19.0,
+      "unit": "°C"
+    },
+    "ENGINE_LOAD": {
+      "label": "Нагрузка двигателя",
+      "value": 21.176470588235293,
+      "unit": "%"
+    },
+    "INTAKE_PRESSURE": {
+      "label": "Давление во впуске (наддув, абс.)",
+      "value": 93.0,
+      "unit": "kPa"
+    },
+    "BAROMETRIC_PRESSURE": {
+      "label": "Атмосферное давление",
+      "value": 95.0,
+      "unit": "kPa"
+    },
+    "MAF": {
+      "label": "Расход воздуха (MAF)",
+      "value": 13.5,
+      "unit": "GPS"
+    },
+    "FUEL_RAIL_PRESSURE_DIRECT": {
+      "label": "Давление в топливной рампе",
+      "value": 29660.0,
+      "unit": "kPa"
+    },
+    "CONTROL_MODULE_VOLTAGE": {
+      "label": "Напряжение бортсети (ЭБУ)",
+      "value": 13.936,
+      "unit": "V"
+    },
+    "RUN_TIME": {
+      "label": "Время работы с запуска",
+      "value": 42.0,
+      "unit": "s"
+    },
+    "DISTANCE_W_MIL": {
+      "label": "Пробег с горящим Check Engine",
+      "value": 8.0,
+      "unit": "km"
+    },
+    "DISTANCE_SINCE_DTC_CLEAR": {
+      "label": "Пробег после сброса ошибок",
+      "value": 995.0,
+      "unit": "km"
+    }
+  },
+  "live_warnings": []
+}
