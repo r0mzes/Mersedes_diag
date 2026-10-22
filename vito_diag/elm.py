@@ -423,6 +423,31 @@ class ElmLink:
             module.notes.append(f"блок сообщает ошибок: {total}, прочитано: {len(seen)}")
         return list(seen.values())
 
+    def read_dtc_details(self, module: Module) -> None:
+        """KWP 17 hi lo для каждой ошибки: статус и данные окружения (только чтение).
+
+        Раскладка данных окружения у Mercedes своя для каждого блока и нигде не
+        опубликована, поэтому сохраняем их сырыми — разбирать по логам.
+        """
+        if module.protocol != "kwp":
+            return
+        for d in module.dtcs:
+            raw = d.extra.get("raw", "")
+            if len(raw) != 4:
+                continue
+            try:
+                payload = self.request(module, bytes([0x17]) + bytes.fromhex(raw))
+                check_positive(payload, 0x17)
+            except DiagError as e:
+                d.extra["details_error"] = str(e)
+                continue
+            truncated = module.bus == "can" and self.truncated
+            d.extra["details_raw"] = hex_bytes(payload) + (" …(обрезано)" if truncated else "")
+            # 57 <кол-во> hi lo статус [данные окружения]
+            if len(payload) >= 5 and f"{payload[2]:02X}{payload[3]:02X}" == raw:
+                d.extra["details_status"] = f"0x{payload[4]:02X}"
+                d.extra["details_env"] = hex_bytes(payload[5:])
+
     def read_dtcs(self, module: Module) -> None:
         """Читает ошибки: сначала KWP2000 (0x18), затем UDS (0x19)."""
         order = ["uds", "kwp"] if module.protocol == "uds" else ["kwp", "uds"]

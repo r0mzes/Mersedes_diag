@@ -171,6 +171,11 @@ def _print_module(m):
     for d in m.dtcs:
         print(f"    {d.code} (сырой {d.extra['raw']}, статус {d.extra['status_byte']}: "
               f"{', '.join(d.extra['status'])}) — {d.description}")
+        if d.extra.get("details_raw"):
+            env = d.extra.get("details_env")
+            print(f"        [17] {d.extra['details_raw']}" + (f"  (данные окружения: {env})" if env else ""))
+        elif d.extra.get("details_error"):
+            print(f"        [17] {d.extra['details_error']}")
 
 
 def _save_modules(modules, args, extra=None):
@@ -186,16 +191,18 @@ def _save_modules(modules, args, extra=None):
     return path
 
 
-def _read_modules(link, modules, can_link=None):
+def _read_modules(link, modules, can_link=None, details=False):
     from vito_diag.protocol import DiagError
 
     for m in modules:
         if m.bus == "can" and can_link is not None:
-            _read_modules(can_link, [m])
+            _read_modules(can_link, [m], details=details)
             continue
         try:
             link.identify(m)
             link.read_dtcs(m)
+            if details:
+                link.read_dtc_details(m)
         except DiagError as e:
             m.error = str(e)
         _print_module(m)
@@ -289,7 +296,7 @@ def cmd_ecu(args):
                 print(hex_bytes(payload))
                 return 0
             modules = [m]
-            _read_modules(link, modules, can_link)
+            _read_modules(link, modules, can_link, details=args.details)
         if args.action in ("scan-can", "scan-all"):
             print("Поиск блоков на CAN (контакты 6/14). Займёт несколько минут...")
             found = can_link.scan_can(int(args.start, 16), int(args.end, 16), can_progress)
@@ -297,7 +304,7 @@ def cmd_ecu(args):
                 print("\n  ! Адаптер игнорирует адрес запроса (ATSH) — перебор CAN ID пропущен.\n"
                       "    Видны только блоки, отвечающие на общий OBD-запрос.")
             print(f"\n  найдено на CAN: {len(found)}")
-            _read_modules(can_link, found)
+            _read_modules(can_link, found, details=args.details)
             modules += found
         if args.action in ("scan-kline", "scan-all") and not link.has_kline:
             print("Самодельный CAN-адаптер не работает с K-line — поиск на K-line пропущен.")
@@ -309,7 +316,7 @@ def cmd_ecu(args):
                 found = link.scan_kline(addrs, line=line, slow="only" if args.slow_only else args.slow,
                                        progress=kline_progress)
                 print(f"\n  найдено на K-line (конт. {line}): {len(found)}")
-                _read_modules(link, found)
+                _read_modules(link, found, details=args.details)
                 modules += found
     finally:
         if hub:
@@ -480,6 +487,8 @@ def build_parser():
     e.add_argument("--slow", action="store_true", help="scan-kline: пробовать и медленную 5-бод инициализацию")
     e.add_argument("--slow-only", action="store_true",
                    help="scan-kline: только медленная 5-бод инициализация (быструю уже проверили)")
+    e.add_argument("--details", action="store_true",
+                   help="read/scan-*: для каждой ошибки KWP запросить 17 (статус и данные окружения, только чтение)")
     e.add_argument("--seconds", type=float, default=5.0, help="monitor: сколько секунд слушать")
     e.add_argument("--unsafe", action="store_true",
                    help="разрешить запросы, меняющие данные в блоках (НЕ использовать без необходимости)")

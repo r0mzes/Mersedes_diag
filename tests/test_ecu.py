@@ -151,3 +151,15 @@ def test_ecu_catalog_and_1a86():
     assert find_ecu("can", 0x999) is None
     assert Module("can", 0x5B4, 0x4F4).title == "Приборная панель (Kombi)"
     assert Module("can", 0x736, 0x4F5).title.endswith("(не подтверждено)")
+
+
+def test_dtc_details(tmp_path):
+    link, fake = make_link(tmp_path)
+    m = Module("can", 0x7E0, 0x7E8, protocol="kwp")
+    link.read_dtcs(m)
+    link.read_dtc_details(m)
+    p0401, p2034 = m.dtcs
+    assert p0401.extra["details_status"] == "0xE0" and p0401.extra["details_env"] == "12 34"
+    assert "NRC 0x11" in p2034.extra["details_error"]
+    assert "172034" in fake.sent
+    link.close()
