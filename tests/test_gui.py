@@ -61,3 +61,11 @@ def test_bridge_exchange_cancel():
     out = bridge_exchange("loop://", [("~STATE", 2), ("ATI", 2), ("AT RV", 2)], cancel=cancel)
     assert time.time() - start < 1.5
     assert out.startswith(">> ~STATE") and "ATI" not in out
+
+
+def test_build_args_modules():
+    assert build_args("module", hub="COM4", block="7E1:7E9") == [
+        "ecu", "read", "--hub", "COM4", "--can", "7E1:7E9", "--details"]
+    assert build_args("all-modules", hub="COM4", details=False) == ["ecu", "scan-can", "--hub", "COM4"]
+    with pytest.raises(ValueError):
+        build_args("module", block="7E1:7E9")

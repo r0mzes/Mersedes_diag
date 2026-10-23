@@ -37,6 +37,16 @@ def find_ecu(bus: str, address: int, reply: int = 0, line: str = "7",
     return None
 
 
+def gui_modules() -> List[dict]:
+    """Блоки для кнопок окна: [{"button", "can": "7E1:7E9", "name"}] в порядке справочника."""
+    out = []
+    for e in _catalog()["modules"]:
+        if e.get("button") and e["bus"] == "can":
+            out.append({"button": e["button"], "name": ecu_title(e),
+                        "can": f"{int(e['request'], 16):03X}:{int(e['reply'], 16):03X}"})
+    return out
+
+
 def ecu_title(entry: Optional[dict]) -> str:
     """Название блока с пометкой, если назначение не подтверждено."""
     if not entry:

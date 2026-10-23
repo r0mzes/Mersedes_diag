@@ -177,3 +177,11 @@ def test_live_dump_and_record(tmp_path):
     assert len(rows) == 2 and (tmp_path / "rec.csv").read_text().startswith("t,lid,data")
     assert [(c["lid"], c["index"]) for c in changing_bytes(rows)] == [(0x01, 3)]
     link.close()
+
+
+def test_gui_modules():
+    from vito_diag.ecus import gui_modules
+
+    mods = {m["button"]: m["can"] for m in gui_modules()}
+    assert mods["Коробка (АКПП)"] == "7E1:7E9" and mods["ESP / ABS"] == "784:785"
+    assert len(mods) == 11

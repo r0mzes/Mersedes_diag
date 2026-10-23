@@ -40,10 +40,22 @@ def _catalog_title(m):
 
 
 def build_args(action: str, port: str = "", baudrate: str = "", line: str = "7",
-               block: str = "", demo: bool = False, switch: bool = False) -> list:
+               block: str = "", demo: bool = False, switch: bool = False, hub: str = "",
+               details: bool = True) -> list:
     """Аргументы python -m vito_diag для кнопки окна.
 
-    switch — авто-переключатель линий на HC-06, через тот же мост ESP32 (--switch bt)."""
+    switch — авто-переключатель линий на HC-06, через тот же мост ESP32 (--switch bt).
+    hub — порт obd_hub: кнопки блоков («Коробка», «ESP»…) читают их по CAN через него,
+    шину и адрес программа берёт из справочника, переключать контакты не нужно."""
+    if action in ("module", "all-modules"):
+        if demo:
+            raise ValueError("Блоки читаются только с машины: снимите «Демо»")
+        if not hub:
+            raise ValueError("Выберите порт блока obd_hub (Arduino) в поле «obd_hub»")
+        tail = ["--details"] if details else []
+        if action == "all-modules":
+            return ["ecu", "scan-can", "--hub", hub] + tail
+        return ["ecu", "read", "--hub", hub, "--can", block] + tail
     if line == ALL_LINES and not (switch and action == "scan-all"):
         raise ValueError("Все линии сразу — только «Найти все блоки» с включённым авто-переключателем")
     common = []
@@ -171,6 +183,19 @@ def list_ports():
     return [(p.device, p.description) for p in lp.comports()]
 
 
+def guess_hub_port() -> str:
+    """Порт obd_hub: Arduino (VID 2341/2A03) или CH340 (VID 1A86). Описание в Windows
+    бывает локализованным («Устройство с последовательным интерфейсом USB»), поэтому по VID."""
+    try:
+        from serial.tools import list_ports as lp
+    except ImportError:
+        return ""
+    for p in lp.comports():
+        if p.vid in (0x2341, 0x2A03, 0x1A86) or "Arduino" in (p.description or ""):
+            return p.device
+    return ""
+
+
 def bridge_exchange(port: str, lines, wait: float = 2.5, cancel=None) -> str:
     """Отправить строки в мост ESP32 (или адаптер) и вернуть всё, что пришло в ответ.
 
@@ -201,6 +226,7 @@ class App:
         self.proc = None
         self.busy = False
         self.cancel = None  # threading.Event текущей проверки моста
+        self.buttons = []
         self.job = 0        # номер задания: ответы отменённого задания не показываем
         self.queue = queue.Queue()
         root.title("vito_diag — диагностика Mercedes Vito")
@@ -213,6 +239,8 @@ class App:
         self.line = tk.StringVar(value="7")
         self.block = tk.StringVar(value="12")
         self.switch = tk.BooleanVar(value=False)
+        self.hub = tk.StringVar()
+        self.details = tk.BooleanVar(value=True)
         self.status = tk.StringVar(value="Готово")
 
         pad = {"padx": 6, "pady": 4}
@@ -226,11 +254,32 @@ class App:
         ttk.Label(conn, text="Скорость:").grid(row=0, column=3, sticky="e", **pad)
         ttk.Entry(conn, textvariable=self.baud, width=8).grid(row=0, column=4, **pad)
         ttk.Checkbutton(conn, text="Демо (без машины)", variable=self.demo).grid(row=0, column=5, **pad)
+        ttk.Label(conn, text="obd_hub:").grid(row=1, column=0, sticky="w", **pad)
+        self.hub_box = ttk.Combobox(conn, textvariable=self.hub, width=40)
+        self.hub_box.grid(row=1, column=1, sticky="we", **pad)
+        ttk.Label(conn, text="Arduino с CAN и реле — для кнопок блоков").grid(
+            row=1, column=2, columnspan=4, sticky="w", **pad)
         conn.columnconfigure(1, weight=1)
+
+        from vito_diag.ecus import gui_modules
+
+        mods = ttk.LabelFrame(root, text="Блоки машины — ошибки и идентификация (через obd_hub, только чтение)")
+        mods.pack(fill="x", **pad)
+        grid = ttk.Frame(mods)
+        grid.pack(fill="x")
+        for i, m in enumerate(gui_modules()):
+            b = ttk.Button(grid, text=m["button"], width=22,
+                           command=lambda m=m: self.run("module", block=m["can"], title=m["name"]))
+            b.grid(row=i // 4, column=i % 4, padx=4, pady=2, sticky="we")
+            self.buttons.append(b)
+        mrow = ttk.Frame(mods)
+        mrow.pack(fill="x")
+        self._button(mrow, "Все блоки (CAN, ~5 мин)", lambda: self.run("all-modules", title="все блоки"))
+        ttk.Checkbutton(mrow, text="Подробности ошибок (пробег, условия)", variable=self.details
+                        ).pack(side="left", padx=6)
 
         bridge = ttk.LabelFrame(root, text="Мост ESP32 и адаптер")
         bridge.pack(fill="x", **pad)
-        self.buttons = []
         self._button(bridge, "Проверить связь", self.check_link)
         self._button(bridge, "Переподключить адаптер", self.reconnect)
         ttk.Label(bridge, text="Если «connect failed» — выньте адаптер на 5–10 с и вставьте обратно."
@@ -319,6 +368,9 @@ class App:
     def _port(self) -> str:
         return self.port.get().split(" ")[0].strip()
 
+    def _hub(self) -> str:
+        return self.hub.get().split(" ")[0].strip()
+
     @staticmethod
     def _open(path: Path):
         if not path.suffix:  # папка — создать, если её ещё нет
@@ -337,6 +389,10 @@ class App:
         guess = next((d for d, desc in ports if "USB Serial" in desc or "FTDI" in desc), "")
         if guess and not self._port():
             self.port.set(guess)
+        self.hub_box["values"] = self.port_box["values"]
+        hub = guess_hub_port()
+        if hub and not self._hub():
+            self.hub.set(hub)
 
     def _need_port(self) -> bool:
         if self.demo.get() or self._port():
@@ -344,16 +400,20 @@ class App:
         messagebox.showwarning("Порт", "Выберите COM-порт адаптера (кнопка «Обновить»).")
         return False
 
-    def run(self, action: str):
-        if self.busy or not self._need_port():
+    def run(self, action: str, block: str = "", title: str = ""):
+        hub_only = action in ("module", "all-modules")
+        if self.busy or not (hub_only or self._need_port()):
             return
         try:
             args = build_args(action, self._port(), self.baud.get().strip(), self.line.get(),
-                              self.block.get(), self.demo.get(), self.switch.get())
+                              block or self.block.get(), self.demo.get(), self.switch.get(),
+                              hub=self._hub(), details=self.details.get())
         except ValueError as e:
             messagebox.showwarning("vito_diag", str(e))
             return
         cmd = [sys.executable, "-u", "-m", "vito_diag"] + args
+        if title:
+            self.write(f"\n### {title}")
         self.write(f"\n$ python -m vito_diag {' '.join(args)}\n")
         env = dict(os.environ, PYTHONIOENCODING="utf-8")
         flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
