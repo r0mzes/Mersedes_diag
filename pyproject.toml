@@ -16,4 +16,4 @@ vito-diag = "vito_diag.cli:main"
 include = ["vito_diag*"]
 
 [tool.setuptools.package-data]
-vito_diag = ["data/*.json"]
+vito_diag = ["data/*.json", "data/*.html"]

@@ -78,6 +78,10 @@ python -m vito_diag ecu read --port COMx --kline 10        # идентифик�
 python -m vito_diag ecu raw "1A 86" --port COMx --can 7E0  # свой запрос
 python -m vito_diag switch meas --switch COMy              # автопереключатель: напряжения на контактах
 python -m vito_diag ecu scan-kline --port COMx --switch COMy --line 7,8,9,11  # все линии сам
+python -m vito_diag lada --port COM7 --hub COM4             # ВАЗ «Январь»: блок, ошибки, живые
+python -m vito_diag web --port COM7 --hub COM4              # приборка в браузере/телефоне (lada)
+python -m vito_diag web --demo                              # то же на эмуляторе «Января» (перелив)
+python -m vito_diag web --profile obd --port COMx           # приборка по общему OBD-II
 ```
 
 - Если собран автоматический переключатель (docs/AUTO_SWITCH.md, Arduino на отдельном COM),

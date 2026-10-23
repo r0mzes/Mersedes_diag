@@ -48,6 +48,14 @@ def build_args(action: str, port: str = "", baudrate: str = "", line: str = "7",
     switch — авто-переключатель линий на HC-06, через тот же мост ESP32 (--switch bt).
     hub — порт obd_hub: кнопки блоков («Коробка», «ESP»…) читают их по CAN через него,
     шину и адрес программа берёт из справочника, переключать контакты не нужно."""
+    if action in ("web-lada", "web-obd"):
+        args = ["web", "--profile", action[4:]]
+        if demo:
+            return args + ["--demo"]
+        if not port:
+            raise ValueError("Выберите порт адаптера (или включите «Демо»)")
+        args += ["--port", port] + (["--baudrate", baudrate] if baudrate else [])
+        return args + (["--hub", hub] if hub and action == "web-lada" else [])
     if action in ("lada", "lada-watch"):
         if demo or not port:
             raise ValueError("«Январь» читается только с машины: выберите порт адаптера и снимите «Демо»")
@@ -420,6 +428,7 @@ class App:
         ttk.Label(lada, text="замеров:").pack(side="left", **pad)
         ttk.Spinbox(lada, from_=0, to=200, textvariable=self.lada_count, width=5).pack(side="left", **pad)
         self._button(lada, "▶ Живые данные", self.lada_watch)
+        self._button(lada, "📱 Панель в браузере", lambda: self.run("web-lada", title="Приборка в браузере"))
         ttk.Label(lada, text="мотор заведён и прогрет; «Отмена» — стоп").pack(side="left", **pad)
         self.dash = LadaDashboard(vaz)
         self.dash.pack(fill="x", **pad)
@@ -438,6 +447,7 @@ class App:
         self._button(row1, "Скан двигателя (OBD-II)", lambda: self.run("scan"))
         self._button(row1, "Найти все блоки", lambda: self.run("scan-all"))
         self._button(row1, "Живые параметры", lambda: self.run("live"))
+        self._button(row1, "📱 Приборка в браузере", lambda: self.run("web-obd", title="Приборка OBD-II"))
         ttk.Label(row1, text="Контакт K-line:").pack(side="left", **pad)
         ttk.Combobox(row1, textvariable=self.line, values=["7", "8", "9", "11", ALL_LINES], width=8,
                      state="readonly").pack(side="left", **pad)
@@ -549,7 +559,7 @@ class App:
         return False
 
     def run(self, action: str, block: str = "", title: str = ""):
-        hub_only = action in ("module", "all-modules", "lada", "lada-watch")
+        hub_only = action in ("module", "all-modules", "lada", "lada-watch", "web-lada", "web-obd")
         if self.busy or not (hub_only or self._need_port()):
             return
         try:

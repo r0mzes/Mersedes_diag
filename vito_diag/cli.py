@@ -292,6 +292,59 @@ def _print_lada_head(rep):
     print(flush=True)
 
 
+def make_profile(args):
+    """Профиль живых данных для веб-панели по аргументам командной строки."""
+    from vito_diag import live
+
+    if args.profile == "lada":
+        if args.demo:
+            from vito_diag.emulator import JanuaryEmulator
+
+            return live.LadaProfile(ser_factory=lambda: JanuaryEmulator(args.demo))
+        if not args.port:
+            raise ValueError("Укажите порт адаптера: --port COM7 (или --demo без машины)")
+        return live.LadaProfile(args.port, args.baudrate or 38400, args.hub or "")
+    return live.ObdProfile(args.port or "", args.baudrate, demo=bool(args.demo))
+
+
+def cmd_web(args):
+    import threading
+    import webbrowser
+
+    from vito_diag.live import Poller
+    from vito_diag.web import lan_addresses, serve
+
+    try:
+        profile = make_profile(args)
+    except ValueError as e:
+        print(e)
+        return 1
+    host, _, port = args.listen.rpartition(":")
+    poller = Poller(profile, record_dir=args.reports_dir)
+    poller.start()
+
+    def ready(_server):
+        local = f"http://localhost:{port}/"
+        print(f"Приборка: {local}" + ("  (ДЕМО, без машины)" if args.demo else ""))
+        if host in ("0.0.0.0", ""):
+            for ip in lan_addresses():
+                print(f"  с телефона (тот же Wi-Fi): http://{ip}:{port}/")
+            print("  Если телефон не открывает — разрешите Python в брандмауэре Windows (частная сеть).")
+        print("Ctrl+C или «Отмена» в окне — остановить.", flush=True)
+        if not args.no_browser:
+            threading.Timer(1.0, webbrowser.open, (local,)).start()
+
+    try:
+        serve(poller, host or "0.0.0.0", int(port), ready)
+    except KeyboardInterrupt:
+        print("\nОстановлено.")
+    finally:
+        poller.stop()
+        if poller.csv_path:
+            print(f"Запись живых данных: {poller.csv_path}")
+    return 0
+
+
 def cmd_lada(args):
     """ВАЗ «Январь»: опознание, ошибки, живые данные OBD-II и подсказки по смеси."""
     import json
@@ -683,6 +736,19 @@ def build_parser():
     j.add_argument("--reports-dir", default="reports", help="папка для отчётов")
     j.add_argument("--no-save", action="store_true", help="не сохранять отчёт")
     j.set_defaults(func=cmd_lada)
+
+    wb = sub.add_parser("web", help="приборка в браузере ноутбука или телефона (по Wi-Fi), только чтение")
+    wb.add_argument("--profile", choices=["lada", "obd"], default="lada",
+                    help="lada — ВАЗ «Январь» (K-line); obd — общий OBD-II (Mercedes и др.)")
+    wb.add_argument("--port", help="порт адаптера, например COM7")
+    wb.add_argument("--baudrate", type=int, help="скорость порта адаптера")
+    wb.add_argument("--hub", help="lada: порт obd_hub (реле линий), например COM4")
+    wb.add_argument("--demo", nargs="?", const="rich", choices=["rich", "ok"],
+                    help="без машины: lada — эмулятор «Января» (rich — перелив, ok — исправный); obd — симулятор")
+    wb.add_argument("--listen", default="0.0.0.0:8080", help="адрес:порт веб-сервера")
+    wb.add_argument("--no-browser", action="store_true", help="не открывать браузер на ноутбуке")
+    wb.add_argument("--reports-dir", default="reports", help="куда писать CSV живых данных")
+    wb.set_defaults(func=cmd_web)
 
     g = sub.add_parser("gui", help="окно с кнопками (для тех, кто не любит командную строку)")
     g.set_defaults(func=cmd_gui)
