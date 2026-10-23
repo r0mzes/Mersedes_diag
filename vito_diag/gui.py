@@ -7,6 +7,7 @@ COM-порт может открыть только одна программа.
 Кнопок стирания ошибок и других запросов, меняющих данные в блоках, здесь нет намеренно.
 """
 
+import json
 import os
 import queue
 import re
@@ -47,7 +48,7 @@ def build_args(action: str, port: str = "", baudrate: str = "", line: str = "7",
     switch — авто-переключатель линий на HC-06, через тот же мост ESP32 (--switch bt).
     hub — порт obd_hub: кнопки блоков («Коробка», «ESP»…) читают их по CAN через него,
     шину и адрес программа берёт из справочника, переключать контакты не нужно."""
-    if action == "lada":
+    if action in ("lada", "lada-watch"):
         if demo or not port:
             raise ValueError("«Январь» читается только с машины: выберите порт адаптера и снимите «Демо»")
         args = ["lada", "--port", port]
@@ -55,7 +56,7 @@ def build_args(action: str, port: str = "", baudrate: str = "", line: str = "7",
             args += ["--baudrate", baudrate]
         if hub:
             args += ["--hub", hub]
-        return args + ["--count", str(int(count or 0))]
+        return args + (["--watch"] if action == "lada-watch" else ["--count", str(int(count or 0))])
     if action in ("module", "all-modules"):
         if demo:
             raise ValueError("Блоки читаются только с машины: снимите «Демо»")
@@ -268,6 +269,85 @@ def bridge_exchange(port: str, lines, wait: float = 2.5, cancel=None) -> str:
     return "\n".join(out)
 
 
+# Плитки панели «Января»: имя из january.PIDS, подпись, формат, нормальный диапазон для прогретого
+# мотора на холостом (вне его — цифра красная). None — без проверки.
+DASH_TILES = [
+    ("ECT", "ОЖ, °C", "{:.0f}", (80, 105)),
+    ("RPM", "Обороты", "{:.0f}", None),
+    ("LTFT", "Долговр. корр., %", "{:+.1f}", (-10, 10)),
+    ("STFT", "Кратковр. корр., %", "{:+.1f}", (-10, 10)),
+    ("O2S1", "Лямбда 1, В", "{:.2f}", None),
+    ("MAF", "ДМРВ, кг/ч", "{:.1f}", None),
+    ("TPS", "Дроссель, %", "{:.1f}", None),
+    ("TIMING", "УОЗ, °", "{:.1f}", None),
+]
+GRAPH_POINTS = 120
+
+
+class LadaDashboard(ttk.Frame):
+    """Крупные цифры и графики живых данных «Января» (последние GRAPH_POINTS замеров)."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.samples = []
+        self.fuel = ""
+        self.tiles = {}
+        for i, (name, label, _fmt, _norm) in enumerate(DASH_TILES):
+            box = ttk.Frame(self, relief="groove", padding=4)
+            box.grid(row=i // 4, column=i % 4, padx=3, pady=3, sticky="nsew")
+            ttk.Label(box, text=label).pack(anchor="w")
+            value = tk.Label(box, text="—", font=("Segoe UI", 22, "bold"))
+            value.pack(anchor="w")
+            graph = tk.Canvas(box, height=40, width=200, highlightthickness=0, bg="white")
+            graph.pack(fill="x")
+            self.tiles[name] = (value, graph)
+            self.columnconfigure(i % 4, weight=1)
+        self.hints = ttk.Label(self, text="Нажмите «▶ Живые данные». Подсказки по смеси появятся здесь.",
+                               wraplength=940, justify="left")
+        self.hints.grid(row=2, column=0, columnspan=4, sticky="w", padx=4, pady=4)
+
+    def reset(self):
+        self.samples = []
+        self.fuel = ""
+        for value, graph in self.tiles.values():
+            value.configure(text="—", fg="black")
+            graph.delete("all")
+
+    def add(self, sample: dict):
+        from vito_diag.january import check_mixture
+
+        self.fuel = sample.get("fuel_system") or self.fuel
+        self.samples = (self.samples + [sample])[-GRAPH_POINTS:]
+        for name, _label, fmt, norm in DASH_TILES:
+            value, graph = self.tiles[name]
+            if name not in sample:
+                continue
+            v = sample[name]
+            bad = norm is not None and not norm[0] <= v <= norm[1] and sample.get("RPM", 0) > 400
+            value.configure(text=fmt.format(v), fg="#c62828" if bad else "black")
+            self._draw(graph, [s[name] for s in self.samples if name in s])
+        hints = check_mixture(self.samples[-60:], self.fuel)
+        self.hints.configure(text=(f"Топливная система: {self.fuel}\n" if self.fuel else "")
+                             + "\n".join("• " + h for h in hints))
+
+    @staticmethod
+    def _draw(canvas, values):
+        canvas.delete("all")
+        if len(values) < 2:
+            return
+        w = max(canvas.winfo_width(), 100)
+        h = int(canvas["height"])
+        lo, hi = min(values), max(values)
+        span = (hi - lo) or 1
+        step = w / (GRAPH_POINTS - 1)
+        pts = []
+        for i, v in enumerate(values):
+            pts += [i * step, h - 3 - (v - lo) / span * (h - 6)]
+        canvas.create_line(*pts, fill="#1565c0", width=2)
+        canvas.create_text(w - 2, 2, text=f"{hi:.3g}", anchor="ne", font=("Segoe UI", 7), fill="gray")
+        canvas.create_text(w - 2, h - 1, text=f"{lo:.3g}", anchor="se", font=("Segoe UI", 7), fill="gray")
+
+
 class App:
     def __init__(self, root: tk.Tk):
         self.root = root
@@ -278,7 +358,7 @@ class App:
         self.job = 0        # номер задания: ответы отменённого задания не показываем
         self.queue = queue.Queue()
         root.title("vito_diag — диагностика (Mercedes, ВАЗ «Январь»)")
-        root.geometry("900x700")
+        root.geometry("1000x820")
         root.minsize(720, 480)
 
         self.port = tk.StringVar()
@@ -312,7 +392,14 @@ class App:
 
         from vito_diag.ecus import gui_modules
 
-        mods = ttk.LabelFrame(root, text="Блоки машины — ошибки и идентификация (через obd_hub, только чтение)")
+        tabs = ttk.Notebook(root)
+        tabs.pack(fill="x", **pad)
+        merc = ttk.Frame(tabs)
+        vaz = ttk.Frame(tabs)
+        tabs.add(merc, text="  Mercedes  ")
+        tabs.add(vaz, text="  ВАЗ «Январь»  ")
+
+        mods = ttk.LabelFrame(merc, text="Блоки машины — ошибки и идентификация (через obd_hub, только чтение)")
         mods.pack(fill="x", **pad)
         grid = ttk.Frame(mods)
         grid.pack(fill="x")
@@ -327,21 +414,24 @@ class App:
         ttk.Checkbutton(mrow, text="Подробности ошибок (пробег, условия)", variable=self.details
                         ).pack(side="left", padx=6)
 
-        lada = ttk.LabelFrame(root, text="ВАЗ «Январь» / M7.9.7 / М73 / М74 — K-line, контакт 7 (только чтение)")
+        lada = ttk.LabelFrame(vaz, text="«Январь» / M7.9.7 / М73 / М74 — K-line, контакт 7 (только чтение)")
         lada.pack(fill="x", **pad)
         self._button(lada, "Прочитать «Январь»", lambda: self.run("lada", title="ВАЗ «Январь»"))
-        ttk.Label(lada, text="Замеров живых данных:").pack(side="left", **pad)
+        ttk.Label(lada, text="замеров:").pack(side="left", **pad)
         ttk.Spinbox(lada, from_=0, to=200, textvariable=self.lada_count, width=5).pack(side="left", **pad)
-        ttk.Label(lada, text="мотор заведён и прогрет; obd_hub — если подключён").pack(side="left", **pad)
+        self._button(lada, "▶ Живые данные", self.lada_watch)
+        ttk.Label(lada, text="мотор заведён и прогрет; «Отмена» — стоп").pack(side="left", **pad)
+        self.dash = LadaDashboard(vaz)
+        self.dash.pack(fill="x", **pad)
 
-        bridge = ttk.LabelFrame(root, text="Мост ESP32 и адаптер")
+        bridge = ttk.LabelFrame(merc, text="Мост ESP32 и адаптер")
         bridge.pack(fill="x", **pad)
         self._button(bridge, "Проверить связь", self.check_link)
         self._button(bridge, "Переподключить адаптер", self.reconnect)
         ttk.Label(bridge, text="Если «connect failed» — выньте адаптер на 5–10 с и вставьте обратно."
                   ).pack(side="left", **pad)
 
-        act = ttk.LabelFrame(root, text="Диагностика (только чтение)")
+        act = ttk.LabelFrame(merc, text="Диагностика (только чтение)")
         act.pack(fill="x", **pad)
         row1 = ttk.Frame(act)
         row1.pack(fill="x")
@@ -414,6 +504,8 @@ class App:
                     continue  # задание уже отменено
                 if kind == "text":
                     self.write(data)
+                elif kind == "live":
+                    self.dash.add(data)
                 elif kind == "done":
                     self.proc = None
                     self._set_busy(False, data)
@@ -457,7 +549,7 @@ class App:
         return False
 
     def run(self, action: str, block: str = "", title: str = ""):
-        hub_only = action in ("module", "all-modules", "lada")
+        hub_only = action in ("module", "all-modules", "lada", "lada-watch")
         if self.busy or not (hub_only or self._need_port()):
             return
         try:
@@ -479,6 +571,11 @@ class App:
         self._set_busy(True, "Выполняется: " + " ".join(args[:2]))
         threading.Thread(target=self._pump, args=(self.proc,), daemon=True).start()
 
+    def lada_watch(self):
+        if not self.busy:
+            self.dash.reset()
+        self.run("lada-watch", title="ВАЗ «Январь» — живые данные")
+
     def _pump(self, proc):
         pending = ""
         while True:
@@ -489,6 +586,14 @@ class App:
             pending = (pending + chunk.decode("utf-8", errors="replace")).replace("\r\n", "\n")
             *lines, pending = pending.split("\n")
             lines = [l for l in lines if not _NOISE.match(l)]
+            live = [l for l in lines if l.startswith("LIVE ")]
+            if live:
+                lines = [l for l in lines if not l.startswith("LIVE ")]
+                for l in live:
+                    try:
+                        self.queue.put(("live", json.loads(l[5:])))
+                    except ValueError:
+                        pass
             if lines:
                 self.queue.put(("text", "\n".join(lines) + "\n"))
             if pending and "\r" in pending:  # строка прогресса без перевода строки

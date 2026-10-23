@@ -87,3 +87,26 @@ def test_cli_lada(tmp_path, monkeypatch, capsys):
     assert "2112-1411020-82" in out and "P0300" in out and "Смесь" in out
     report = json.loads(next(tmp_path.glob("lada_*.json")).read_text(encoding="utf-8"))
     assert report["ecu_number"] == "2112-1411020-82" and len(report["samples"]) == 2
+
+
+def test_cli_lada_watch(tmp_path, monkeypatch, capsys):
+    import vito_diag.elm as elm
+
+    monkeypatch.setattr(elm, "open_serial", lambda *a, **k: JanuaryElm())
+    calls = []
+    real = january.read_2101
+
+    def stop_after_three(link, module):
+        calls.append(1)
+        if len(calls) > 3:
+            raise KeyboardInterrupt
+        return real(link, module)
+
+    monkeypatch.setattr(january, "read_2101", stop_after_three)
+    assert cli.main(["lada", "--port", "COMX", "--watch", "--reports-dir", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    live = [json.loads(l[5:]) for l in out.splitlines() if l.startswith("LIVE ")]
+    assert len(live) == 3 and live[0]["ECT"] == 90 and live[0]["fuel_system"] == "работа по лямбда-зонду"
+    assert out.index("2112-1411020-82") < out.index("LIVE ")  # опознание и ошибки — до живых данных
+    rows = next(tmp_path.glob("lada_live_*.csv")).read_text(encoding="utf-8").splitlines()
+    assert len(rows) == 4 and rows[0].startswith("t;LOAD;ECT")

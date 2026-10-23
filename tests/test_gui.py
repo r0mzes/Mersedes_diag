@@ -91,3 +91,29 @@ def test_lada_args_and_saved(tmp_path):
     assert title == "24.10 10:00  ВАЗ «Январь» 2112-1411020-82 — ошибок: 1 [P0300]" and not demo
     text = format_saved(path)
     assert "P0300 (статус 0xE0" in text and "убирает топливо" in text and "Температура ОЖ" in text
+
+
+def test_lada_watch_args_and_dashboard():
+    import tkinter as tk
+
+    from vito_diag.gui import LadaDashboard
+
+    assert build_args("lada-watch", "COM7", hub="COM4") == ["lada", "--port", "COM7", "--hub", "COM4", "--watch"]
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("нет дисплея")
+    try:
+        dash = LadaDashboard(root)
+        for v in (0.1, 0.8, 0.2):
+            dash.add({"RPM": 800, "ECT": 20, "LTFT": -20, "STFT": 0, "O2S1": v,
+                      "fuel_system": "работа по лямбда-зонду"})
+        value, graph = dash.tiles["ECT"]
+        assert value["text"] == "20" and value["fg"] == "#c62828"
+        assert dash.tiles["LTFT"][0]["text"] == "-20.0" and graph.find_all()
+        assert "считает мотор холодным" in dash.hints["text"]
+        assert dash.tiles["MAF"][0]["text"] == "—"
+        dash.reset()
+        assert value["text"] == "—" and not graph.find_all()
+    finally:
+        root.destroy()

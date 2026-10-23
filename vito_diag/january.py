@@ -236,7 +236,10 @@ def check_mixture(samples: List[Dict[str, float]], fuel_system: str = "") -> Lis
 
 
 def scan(link, live_count: int = 10, progress: Optional[Callable[[str], None]] = None,
-         addresses=ADDRESSES) -> LadaReport:
+         addresses=ADDRESSES, on_sample: Optional[Callable[[dict], None]] = None,
+         on_ready: Optional[Callable[["LadaReport"], None]] = None) -> LadaReport:
+    """live_count < 0 — опрашивать живые данные бесконечно (окончание — Ctrl+C / остановка
+    процесса); on_ready — после опознания и ошибок, on_sample — после каждого замера."""
     say = progress or (lambda _t: None)
     rep = LadaReport()
     module = connect(link, addresses)
@@ -254,9 +257,18 @@ def scan(link, live_count: int = 10, progress: Optional[Callable[[str], None]] =
         rep.notes.append("Блок не отвечает на запросы OBD-II (служба 01) — вероятно, прошивка Евро-2 "
                          "без лямбда-зонда; живые данные только сырым блоком 21 01.")
     rep.fuel_system = read_fuel_system(link, module) if 0x03 in rep.supported_pids else ""
-    for i in range(live_count):
-        say(f"живые данные {i + 1}/{live_count}")
-        if rep.supported_pids:
-            rep.samples.append(read_sample(link, module, rep.supported_pids))
-        rep.raw_2101.append(read_2101(link, module))
+    if on_ready:
+        on_ready(rep)
+    i = 0
+    while live_count < 0 or i < live_count:
+        i += 1
+        say(f"живые данные {i}" + (f"/{live_count}" if live_count > 0 else ""))
+        sample = read_sample(link, module, rep.supported_pids) if rep.supported_pids else {}
+        raw = read_2101(link, module)
+        if live_count > 0:  # в бесконечном режиме замеры не копим — их пишет on_sample
+            if rep.supported_pids:
+                rep.samples.append(sample)
+            rep.raw_2101.append(raw)
+        if on_sample:
+            on_sample({**sample, "raw_2101": raw, "fuel_system": rep.fuel_system})
     return rep
