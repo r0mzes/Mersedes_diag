@@ -49,6 +49,7 @@
   собирает длинные ответы (Flow Control). Только CAN, K-line нет. Ядро проверяется тестом
   `tests/test_can_adapter.py` (нужен g++). В машине: сначала `ecu monitor` (только слушает), потом
   `ecu read --can 7E1:7E9`, потом `ecu scan-can`.
+- **PowerShell:** hex-списки брать в кавычки (`--lids "01,02,0D,0E"`), иначе `0D` превращается в число 0.
 - **Порт моста открывать без DTR/RTS** (`vito_diag.elm.open_serial`), иначе ESP32 уходит в сброс
   и рвёт связь с адаптером. `esp_terminal.ps1` вызывать через `&` из PowerShell, не через `-File`
   (иначе `-Lines` склеивается в одну строку).
