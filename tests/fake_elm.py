@@ -66,6 +66,9 @@ class FakeElm:
             return "00D\r0: 5A 86 41 36 34 36\r1: 31 32 33 34 35 36 37"
         if c == "18" + "02FF00":
             return "58 02 04 01 E0 20 34 60"
+        if c == "2101":
+            self.tick = getattr(self, "tick", 0) + 1
+            return f"61 01 00 {self.tick % 256:02X} 55"
         if c == "170401":
             return "57 01 04 01 E0 12 34"
         return "7F " + c[:2] + " 11"

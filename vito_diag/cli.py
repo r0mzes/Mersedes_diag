@@ -208,6 +208,52 @@ def _read_modules(link, modules, can_link=None, details=False):
         _print_module(m)
 
 
+def _live(args, link, can_link, sw, line):
+    """ecu dump / ecu record: живые данные блока (служба 21, только чтение)."""
+    import json
+    from datetime import datetime
+    from pathlib import Path
+
+    from vito_diag.livedata import changing_bytes, dump_lids, record
+
+    args.line = line
+    m = _module_from_args(args)
+    if m.bus == "kline":
+        _select_line(link, sw, m.line)
+    lk = can_link if m.bus == "can" else link
+    out = Path(args.reports_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    tag = f"{m.address:03X}" if m.bus == "can" else f"kl{m.address:02X}"
+    if args.action == "dump":
+        lids = _parse_addr_list(args.lids or "01-FF")
+        found = dump_lids(lk, m, lids, lambda x: print(f"\r  LID 0x{x:02X}", end="", flush=True))
+        print(f"\n  ответили LID: {len(found)}")
+        for lid, data in found.items():
+            print(f"    21 {lid:02X} -> {data}")
+        path = out / f"live_{tag}_{stamp}.json"
+        path.write_text(json.dumps({"module": m.name, "created": stamp, "lids":
+                                    {f"{k:02X}": v for k, v in found.items()}},
+                                   ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"\nРезультат: {path}\nЛог обмена: {lk.log_path}")
+        return 0
+    if not args.lids:
+        print("Для record укажите --lids (из ecu dump), например --lids 01,02,05")
+        return 1
+    path = out / f"rec_{tag}_{stamp}.csv"
+    print(f"Запись {args.seconds:.0f} с: {m.name}, LID {args.lids}. Ctrl+C — остановить раньше.")
+    try:
+        rows = record(lk, m, _parse_addr_list(args.lids), args.seconds, path)
+    except KeyboardInterrupt:
+        print("\nОстановлено.")
+        return 0
+    print(f"  опросов: {len(rows)}")
+    for c in changing_bytes(rows):
+        print(f"    21 {c['lid']:02X} байт {c['index']}: {c['min']}..{c['max']} ({c['values']} значений)")
+    print(f"\nЗапись: {path}\nЛог обмена: {lk.log_path}")
+    return 0
+
+
 def _select_line(link, sw, line):
     """Перевести переключатель на контакт машины line (между запросами, не во время)."""
     if sw is None:
@@ -285,6 +331,9 @@ def cmd_ecu(args):
             for cid, n in sorted(ids.items()):
                 print(f"  0x{cid:03X}: {n} кадров")
             return 0
+
+        if args.action in ("dump", "record"):
+            return _live(args, link, can_link, sw, lines[0])
 
         if args.action in ("raw", "read"):
             args.line = lines[0]
@@ -469,9 +518,12 @@ def build_parser():
 
     e = sub.add_parser("ecu", parents=[common],
                        help="опрос блоков напрямую через ELM327: поиск, идентификация, ошибки")
-    e.add_argument("action", choices=["monitor", "scan-can", "scan-kline", "scan-all", "read", "raw"],
+    e.add_argument("action", choices=["monitor", "scan-can", "scan-kline", "scan-all", "read", "raw",
+                                      "dump", "record"],
                    help="monitor — послушать CAN; scan-* — найти блоки; read — прочитать блок; "
-                        "raw — отправить свой запрос")
+                        "raw — отправить свой запрос; dump — какие LID службы 21 отвечают; "
+                        "record — записать выбранные LID во времени (только чтение)")
+    e.add_argument("--lids", help="dump/record: LID службы 21, hex (например '01-3F' или '01,05')")
     e.add_argument("request", nargs="?", help="для raw: запрос в hex, например '1A 86'")
     e.add_argument("--can", help="блок на CAN: ID запроса[:ID ответа], hex (например 7E0:7E8)")
     e.add_argument("--kline", help="блок на K-line: адрес, hex (например 10)")
@@ -489,7 +541,7 @@ def build_parser():
                    help="scan-kline: только медленная 5-бод инициализация (быструю уже проверили)")
     e.add_argument("--details", action="store_true",
                    help="read/scan-*: для каждой ошибки KWP запросить 17 (статус и данные окружения, только чтение)")
-    e.add_argument("--seconds", type=float, default=5.0, help="monitor: сколько секунд слушать")
+    e.add_argument("--seconds", type=float, default=5.0, help="monitor/record: сколько секунд")
     e.add_argument("--unsafe", action="store_true",
                    help="разрешить запросы, меняющие данные в блоках (НЕ использовать без необходимости)")
     e.set_defaults(func=cmd_ecu)

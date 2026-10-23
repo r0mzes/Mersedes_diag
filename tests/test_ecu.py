@@ -163,3 +163,17 @@ def test_dtc_details(tmp_path):
     assert "NRC 0x11" in p2034.extra["details_error"]
     assert "172034" in fake.sent
     link.close()
+
+
+def test_live_dump_and_record(tmp_path):
+    from vito_diag.livedata import changing_bytes, dump_lids, record
+
+    link, _ = make_link(tmp_path)
+    m = Module("can", 0x7E0, 0x7E8, protocol="kwp")
+    found = dump_lids(link, m, [0x01, 0x02])
+    assert list(found) == [0x01] and found[0x01].startswith("61 01 00")
+    t = iter(range(100))
+    rows = record(link, m, [0x01], 5, tmp_path / "rec.csv", clock=lambda: next(t))
+    assert len(rows) == 2 and (tmp_path / "rec.csv").read_text().startswith("t,lid,data")
+    assert [(c["lid"], c["index"]) for c in changing_bytes(rows)] == [(0x01, 3)]
+    link.close()
