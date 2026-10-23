@@ -69,3 +69,25 @@ def test_build_args_modules():
     assert build_args("all-modules", hub="COM4", details=False) == ["ecu", "scan-can", "--hub", "COM4"]
     with pytest.raises(ValueError):
         build_args("module", block="7E1:7E9")
+
+
+def test_lada_args_and_saved(tmp_path):
+    import json
+
+    from vito_diag.gui import format_saved, saved_results
+
+    assert build_args("lada", "COM7", "", hub="COM4", count="5") == \
+        ["lada", "--port", "COM7", "--hub", "COM4", "--count", "5"]
+    assert build_args("lada", "COM7", "38400") == ["lada", "--port", "COM7", "--baudrate", "38400",
+                                                    "--count", "20"]
+    with pytest.raises(ValueError):
+        build_args("lada", "COM7", demo=True)
+    (tmp_path / "lada_2026-10-24_10-00-00.json").write_text(json.dumps({
+        "created": "2026-10-24T10:00:00", "address": "0x10", "ecu_number": "2112-1411020-82",
+        "dtcs": [{"code": "P0300", "description": "Пропуски", "status_byte": "0xE0", "status": ["есть"]}],
+        "dtc_error": "", "fuel_system": "работа по лямбда-зонду",
+        "samples": [{"RPM": 800, "ECT": 90, "LTFT": -20, "STFT": -5}]}), encoding="utf-8")
+    (path, title, demo), = saved_results(tmp_path)
+    assert title == "24.10 10:00  ВАЗ «Январь» 2112-1411020-82 — ошибок: 1 [P0300]" and not demo
+    text = format_saved(path)
+    assert "P0300 (статус 0xE0" in text and "убирает топливо" in text and "Температура ОЖ" in text

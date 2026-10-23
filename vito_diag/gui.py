@@ -41,12 +41,21 @@ def _catalog_title(m):
 
 def build_args(action: str, port: str = "", baudrate: str = "", line: str = "7",
                block: str = "", demo: bool = False, switch: bool = False, hub: str = "",
-               details: bool = True) -> list:
+               details: bool = True, count: str = "20") -> list:
     """Аргументы python -m vito_diag для кнопки окна.
 
     switch — авто-переключатель линий на HC-06, через тот же мост ESP32 (--switch bt).
     hub — порт obd_hub: кнопки блоков («Коробка», «ESP»…) читают их по CAN через него,
     шину и адрес программа берёт из справочника, переключать контакты не нужно."""
+    if action == "lada":
+        if demo or not port:
+            raise ValueError("«Январь» читается только с машины: выберите порт адаптера и снимите «Демо»")
+        args = ["lada", "--port", port]
+        if baudrate:
+            args += ["--baudrate", baudrate]
+        if hub:
+            args += ["--hub", hub]
+        return args + ["--count", str(int(count or 0))]
     if action in ("module", "all-modules"):
         if demo:
             raise ValueError("Блоки читаются только с машины: снимите «Демо»")
@@ -106,6 +115,12 @@ def describe_saved(path: Path):
         title = (f"{_when(data.get('created', ''))}  Скан двигателя (OBD-II) — ошибок: {len(codes)}"
                  + (f" [{', '.join(codes)}]" if codes else "") + ("   (ДЕМО)" if demo else ""))
         return title, demo
+    if path.name.startswith("lada_"):
+        codes = [d["code"] for d in data.get("dtcs", [])]
+        title = (f"{_when(data.get('created', ''))}  ВАЗ «Январь» {data.get('ecu_number') or ''} — "
+                 + (f"ошибок: {len(codes)}" + (f" [{', '.join(codes)}]" if codes else "")
+                    if not data.get("dtc_error") else "ошибки не прочитаны"))
+        return title, False
     if path.name.startswith("modules_"):
         mods = data.get("modules", [])
         codes = sorted({d["code"] for m in mods for d in m.get("dtcs", [])})
@@ -134,6 +149,8 @@ def format_saved(path: Path) -> str:
         for f in data.get("findings", []):
             out.append(f" • {f['title']} ({', '.join(f.get('codes', []))}): {f.get('advice', '')}")
         return "\n".join(out)
+    if path.name.startswith("lada_"):
+        return "\n".join(out + format_lada(data))
     mods = data.get("modules", [])
     if len(mods) > 50:
         out.append(f" Блоков: {len(mods)} — это ложный результат старой версии (клон ELM327 "
@@ -161,6 +178,37 @@ def format_saved(path: Path) -> str:
             out.append(f"    {d['code']} (статус {extra.get('status_byte', '?')}: "
                        f"{', '.join(extra.get('status', []))}) — {d['description']}")
     return "\n".join(out)
+
+
+def format_lada(data: dict) -> list:
+    """Строки отчёта «Января»: блок, ошибки, сводка живых данных и подсказки по смеси."""
+    from vito_diag.january import PIDS, check_mixture
+
+    out = [f"■ ВАЗ «Январь», K-line адрес {data.get('address', '?')}"]
+    for key, label in (("ecu_number", "номер блока"), ("vin", "VIN"), ("ident_text", "идентификация"),
+                       ("fuel_system", "топливная система")):
+        if data.get(key):
+            out.append(f"    {label}: {data[key]}")
+    if data.get("dtc_error"):
+        out.append(f"    ошибки не прочитаны: {data['dtc_error']}")
+    elif not data.get("dtcs"):
+        out.append("    ошибок нет")
+    for d in data.get("dtcs", []):
+        out.append(f"    {d['code']} (статус {d.get('status_byte', '?')}: "
+                   f"{', '.join(d.get('status', []))}) — {d['description']}")
+    for note in data.get("notes", []):
+        out.append(f"    ! {note}")
+    samples = data.get("samples", [])
+    if samples:
+        out.append("  Живые данные (мин / среднее / макс):")
+        for name, label, unit, _f in PIDS.values():
+            vals = [s[name] for s in samples if name in s]
+            if vals:
+                out.append(f"    {label:<38} {min(vals):8.2f} {sum(vals) / len(vals):8.2f} "
+                           f"{max(vals):8.2f}  {unit}")
+        out.append("  Смесь:")
+        out += [f"    • {w}" for w in check_mixture(samples, data.get("fuel_system", ""))]
+    return out
 
 
 def saved_results(reports_dir: Path):
@@ -229,7 +277,7 @@ class App:
         self.buttons = []
         self.job = 0        # номер задания: ответы отменённого задания не показываем
         self.queue = queue.Queue()
-        root.title("vito_diag — диагностика Mercedes Vito")
+        root.title("vito_diag — диагностика (Mercedes, ВАЗ «Январь»)")
         root.geometry("900x700")
         root.minsize(720, 480)
 
@@ -241,6 +289,7 @@ class App:
         self.switch = tk.BooleanVar(value=False)
         self.hub = tk.StringVar()
         self.details = tk.BooleanVar(value=True)
+        self.lada_count = tk.StringVar(value="20")
         self.status = tk.StringVar(value="Готово")
 
         pad = {"padx": 6, "pady": 4}
@@ -277,6 +326,13 @@ class App:
         self._button(mrow, "Все блоки (CAN, ~5 мин)", lambda: self.run("all-modules", title="все блоки"))
         ttk.Checkbutton(mrow, text="Подробности ошибок (пробег, условия)", variable=self.details
                         ).pack(side="left", padx=6)
+
+        lada = ttk.LabelFrame(root, text="ВАЗ «Январь» / M7.9.7 / М73 / М74 — K-line, контакт 7 (только чтение)")
+        lada.pack(fill="x", **pad)
+        self._button(lada, "Прочитать «Январь»", lambda: self.run("lada", title="ВАЗ «Январь»"))
+        ttk.Label(lada, text="Замеров живых данных:").pack(side="left", **pad)
+        ttk.Spinbox(lada, from_=0, to=200, textvariable=self.lada_count, width=5).pack(side="left", **pad)
+        ttk.Label(lada, text="мотор заведён и прогрет; obd_hub — если подключён").pack(side="left", **pad)
 
         bridge = ttk.LabelFrame(root, text="Мост ESP32 и адаптер")
         bridge.pack(fill="x", **pad)
@@ -401,13 +457,14 @@ class App:
         return False
 
     def run(self, action: str, block: str = "", title: str = ""):
-        hub_only = action in ("module", "all-modules")
+        hub_only = action in ("module", "all-modules", "lada")
         if self.busy or not (hub_only or self._need_port()):
             return
         try:
             args = build_args(action, self._port(), self.baud.get().strip(), self.line.get(),
                               block or self.block.get(), self.demo.get(), self.switch.get(),
-                              hub=self._hub(), details=self.details.get())
+                              hub=self._hub(), details=self.details.get(),
+                              count=self.lada_count.get().strip())
         except ValueError as e:
             messagebox.showwarning("vito_diag", str(e))
             return
