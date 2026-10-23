@@ -267,6 +267,89 @@ def _select_line(link, sw, line):
     time.sleep(0.3)
 
 
+def cmd_lada(args):
+    """ВАЗ «Январь»: опознание, ошибки, живые данные OBD-II и подсказки по смеси."""
+    import json
+    from pathlib import Path
+
+    from vito_diag import january
+    from vito_diag.elm import ElmLink
+    from vito_diag.protocol import DiagError
+
+    hub = None
+    if args.hub:
+        from vito_diag.hub import Hub
+
+        hub = Hub(args.hub)
+    try:
+        link = ElmLink(args.port, baudrate=args.baudrate)
+    except Exception:
+        if hub:
+            hub.close()
+        raise
+    try:
+        if hub:
+            _select_line(link, hub.switch, "7")
+        print(f"Адаптер: {link.version.splitlines()[-1] if link.version else '?'};  "
+              f"напряжение: {link.voltage()};  лог обмена: {link.log_path}")
+        progress = (lambda t: print(f"\r  {t:<30}", end="", flush=True))
+        try:
+            rep = january.scan(link, args.count, progress, _parse_addr_list(args.addr))
+        except DiagError as e:
+            print(f"\n{e}.\nПроверьте: зажигание включено, АКБ заряжен (≥ 12 В), K-line не разорвана "
+                  "иммобилайзером. Лог обмена: " + str(link.log_path))
+            return 2
+    finally:
+        try:
+            if link.mode == "kline":
+                link.cmd("ATPC")
+            link.close()
+        finally:
+            if hub:
+                hub.close()
+
+    print(f"\n\n■ Блок двигателя, K-line адрес 0x{rep.address:02X}")
+    if rep.ecu_number:
+        print(f"    номер блока: {rep.ecu_number}")
+    if rep.vin:
+        print(f"    VIN: {rep.vin}")
+    if rep.ident_text:
+        print(f"    идентификация: {rep.ident_text}")
+    for req, raw in rep.ident_raw.items():
+        print(f"    [{req}] {raw}")
+    if rep.dtc_error:
+        print(f"    ошибки не прочитаны: {rep.dtc_error}")
+    elif not rep.dtcs:
+        print("    ошибок нет")
+    for d in rep.dtcs:
+        print(f"    {d.code} (сырой {d.extra['raw']}, статус {d.extra['status_byte']}: "
+              f"{', '.join(d.extra['status'])}) — {d.description}")
+    for note in rep.notes:
+        print(f"    ! {note}")
+    if rep.fuel_system:
+        print(f"    топливная система: {rep.fuel_system}")
+    if rep.samples:
+        print("\n  Живые данные (мин / среднее / макс):")
+        for pid, (name, label, unit, _f) in january.PIDS.items():
+            vals = [s[name] for s in rep.samples if name in s]
+            if vals:
+                print(f"    {label:<38} {min(vals):8.2f} {sum(vals) / len(vals):8.2f} "
+                      f"{max(vals):8.2f}  {unit}")
+    if rep.samples:
+        print("\n  Смесь:")
+        for w in january.check_mixture(rep.samples, rep.fuel_system):
+            print(f"    • {w}")
+    if not args.no_save:
+        out = Path(args.reports_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        path = out / f"lada_{datetime.now():%Y-%m-%d_%H-%M-%S}.json"
+        path.write_text(json.dumps({"created": datetime.now().isoformat(timespec="seconds"),
+                                    "log": str(link.log_path), **rep.to_dict()},
+                                   ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"\nРезультат: {path}\nЛог обмена: {link.log_path}")
+    return 0
+
+
 def cmd_ecu(args):
     if args.demo:
         print("Команда ecu работает только с реальным адаптером.")
@@ -556,6 +639,17 @@ def build_parser():
     w.add_argument("--port", help="с --switch bt: порт моста ESP32, например COM7")
     w.add_argument("--count", type=int, default=1, help="meas: сколько замеров подряд")
     w.set_defaults(func=cmd_switch)
+
+    j = sub.add_parser("lada", help="ВАЗ «Январь» / Bosch M7.9.7 / М73 / М74 по K-line: "
+                                    "опознание, ошибки, живые данные (только чтение)")
+    j.add_argument("--port", required=True, help="порт ELM327 / KKL, например COM7")
+    j.add_argument("--baudrate", type=int, default=38400, help="скорость порта адаптера")
+    j.add_argument("--hub", help="порт obd_hub (реле линий), например COM4 — выберет контакт 7")
+    j.add_argument("--addr", default="10,11", help="адреса блока, hex (по умолчанию 10,11)")
+    j.add_argument("--count", type=int, default=20, help="сколько опросов живых данных (0 — без них)")
+    j.add_argument("--reports-dir", default="reports", help="папка для отчётов")
+    j.add_argument("--no-save", action="store_true", help="не сохранять отчёт")
+    j.set_defaults(func=cmd_lada)
 
     g = sub.add_parser("gui", help="окно с кнопками (для тех, кто не любит командную строку)")
     g.set_defaults(func=cmd_gui)
