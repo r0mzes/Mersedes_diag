@@ -171,18 +171,23 @@ def list_ports():
     return [(p.device, p.description) for p in lp.comports()]
 
 
-def bridge_exchange(port: str, lines, wait: float = 2.5) -> str:
-    """Отправить строки в мост ESP32 (или адаптер) и вернуть всё, что пришло в ответ."""
+def bridge_exchange(port: str, lines, wait: float = 2.5, cancel=None) -> str:
+    """Отправить строки в мост ESP32 (или адаптер) и вернуть всё, что пришло в ответ.
+
+    cancel — threading.Event: если взведён, обмен прерывается между чтениями.
+    """
     from vito_diag.elm import open_serial
 
     ser = open_serial(port, baudrate=38400, timeout=0.2)
     out = []
     try:
         for line, pause in lines:
+            if cancel is not None and cancel.is_set():
+                break
             ser.write((line + ("\n" if line.startswith("~") else "\r")).encode("ascii"))
             end = time.time() + (pause or wait)
             buf = b""
-            while time.time() < end:
+            while time.time() < end and not (cancel is not None and cancel.is_set()):
                 buf += ser.read(256)
             out.append(f">> {line}\n" + buf.decode("ascii", errors="replace").replace("\r", "\n").strip())
     finally:
@@ -195,6 +200,8 @@ class App:
         self.root = root
         self.proc = None
         self.busy = False
+        self.cancel = None  # threading.Event текущей проверки моста
+        self.job = 0        # номер задания: ответы отменённого задания не показываем
         self.queue = queue.Queue()
         root.title("vito_diag — диагностика Mercedes Vito")
         root.geometry("900x700")
@@ -255,7 +262,7 @@ class App:
 
         tools = ttk.Frame(root)
         tools.pack(fill="x", **pad)
-        self.stop_btn = ttk.Button(tools, text="Остановить", command=self.stop, state="disabled")
+        self.stop_btn = ttk.Button(tools, text="Отмена", command=self.stop, state="disabled")
         self.stop_btn.pack(side="left", **pad)
         ttk.Button(tools, text="Сохранённые результаты", command=self.show_saved).pack(side="left", **pad)
         ttk.Button(tools, text="Открыть последний отчёт", command=self.open_report).pack(side="left", **pad)
@@ -282,7 +289,7 @@ class App:
         self.busy = busy
         for b in self.buttons:
             b.configure(state="disabled" if busy else "normal")
-        self.stop_btn.configure(state="normal" if busy and self.proc else "disabled")
+        self.stop_btn.configure(state="normal" if busy else "disabled")
         self.status.set(text)
 
     def write(self, text: str):
@@ -297,7 +304,9 @@ class App:
     def _drain(self):
         try:
             while True:
-                kind, data = self.queue.get_nowait()
+                kind, data, *job = self.queue.get_nowait()
+                if job and job[0] != self.job:
+                    continue  # задание уже отменено
                 if kind == "text":
                     self.write(data)
                 elif kind == "done":
@@ -382,26 +391,30 @@ class App:
             return
         port = self._port()
         self.write(f"\n# {title} ({port})\n")
-        self._set_busy(True, title + "...")
+        self.job += 1
+        jid, cancel = self.job, threading.Event()
+        self.cancel = cancel
+        self._set_busy(True, title + "... (нет связи — «Отмена»)")
 
         def work():
             try:
-                self.queue.put(("text", job(port) + "\n"))
-                self.queue.put(("done", "Готово"))
+                self.queue.put(("text", job(port, cancel) + "\n", jid))
+                self.queue.put(("done", "Готово", jid))
             except Exception as e:  # порт занят, не найден и т. п.
-                self.queue.put(("text", f"ОШИБКА: {e}\n"))
-                self.queue.put(("done", "Ошибка связи"))
+                self.queue.put(("text", f"ОШИБКА: {e}\n", jid))
+                self.queue.put(("done", "Ошибка связи", jid))
 
         threading.Thread(target=work, daemon=True).start()
 
     def check_link(self):
         self._bridge("Проверка связи",
-                     lambda port: bridge_exchange(port, [("~STATE", 2), ("ATI", 2), ("AT RV", 2)]))
+                     lambda port, cancel: bridge_exchange(port, [("~STATE", 2), ("ATI", 2), ("AT RV", 2)],
+                                                          cancel=cancel))
 
     def reconnect(self):
-        def job(port):
+        def job(port, cancel):
             # ~USE нужен адрес адаптера — берём сохранённый в мосте из ~STATE.
-            state = bridge_exchange(port, [("~STATE", 2)])
+            state = bridge_exchange(port, [("~STATE", 2)], cancel=cancel)
             m = re.search(r"addr=([0-9a-fA-F:]{17})", state)
             if not m:
                 return state + "\nАдрес адаптера в мосте не сохранён."
@@ -411,7 +424,7 @@ class App:
             if addr.lower() == DEFAULT_HC06:  # прерванная работа оставила мост на переключателе
                 addr = DEFAULT_ELM
             # первое подключение после смены устройства у моста не проходит — сначала ~SCAN
-            return bridge_exchange(port, [("~SCAN", 13), (f"~USE {addr}", 15), ("AT RV", 2)])
+            return bridge_exchange(port, [("~SCAN", 13), (f"~USE {addr}", 15), ("AT RV", 2)], cancel=cancel)
 
         self._bridge("Переподключение адаптера", job)
 
@@ -419,6 +432,14 @@ class App:
         if self.proc and self.proc.poll() is None:
             self.proc.terminate()
             self.write("\n[остановлено]\n")
+        elif self.busy and self.cancel is not None:
+            # Открытие COM-порта без связи может висеть десятки секунд и не прерывается —
+            # окно освобождаем сразу, а поздний ответ задания просто не показываем.
+            self.cancel.set()
+            self.cancel = None
+            self.job += 1
+            self.write("[отменено: связи нет]\n")
+            self._set_busy(False, "Отменено")
 
     def open_report(self):
         """Последний HTML-отчёт скана двигателя с реальной машины (демо пропускаем)."""

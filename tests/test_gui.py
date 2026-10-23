@@ -47,3 +47,17 @@ def test_build_args_with_bridge_switch():
     assert build_args("switch-meas", "COM7") == ["switch", "meas", "--switch", "bt", "--port", "COM7"]
     with pytest.raises(ValueError):
         build_args("scan-all", "COM7", line=ALL_LINES)  # все линии — только с переключателем
+
+
+def test_bridge_exchange_cancel():
+    import threading
+    import time
+
+    from vito_diag.gui import bridge_exchange
+
+    cancel = threading.Event()
+    threading.Timer(0.3, cancel.set).start()
+    start = time.time()
+    out = bridge_exchange("loop://", [("~STATE", 2), ("ATI", 2), ("AT RV", 2)], cancel=cancel)
+    assert time.time() - start < 1.5
+    assert out.startswith(">> ~STATE") and "ATI" not in out
