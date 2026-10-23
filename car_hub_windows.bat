@@ -29,6 +29,8 @@ echo  4  Найти блоки на CAN
 echo  5  Найти блоки на K-line, линии 7, 9, 11 (через ELM327, 10-20 мин на линию)
 echo  6  Всё сразу: CAN + K-line 7, 9, 11
 echo  7  Проверить ELM327 (ATI, AT RV)
+echo  8  Ошибки всех блоков CAN с подробностями (17, только чтение)
+echo  9  ESP: какие живые данные отвечают (21 01-FF, только чтение)
 echo  0  Выход
 set CH=
 set /p CH="Выбор: "
@@ -39,5 +41,7 @@ if "%CH%"=="4" python -m vito_diag ecu scan-can --hub %HUB%
 if "%CH%"=="5" python -m vito_diag ecu scan-kline --hub %HUB% --port %BT% --line 7,9,11
 if "%CH%"=="6" python -m vito_diag ecu scan-all --hub %HUB% --port %BT% --line 7,9,11
 if "%CH%"=="7" powershell -NoProfile -ExecutionPolicy Bypass -Command "& '%~dp0tools\esp_terminal.ps1' -Port %BT% -Lines 'ATI','AT RV'"
+if "%CH%"=="8" python -m vito_diag ecu scan-can --hub %HUB% --details
+if "%CH%"=="9" python -m vito_diag ecu dump --hub %HUB% --can 784:785
 if "%CH%"=="0" goto :eof
 goto menu

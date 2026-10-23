@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
 from vito_diag.dtc import DTC, lookup
+from vito_diag.ecus import decode_1a86, ecu_title, find_ecu
 from vito_diag.protocol import (
     DiagError, check_positive, describe_kwp_status, describe_uds_status, extract_part_number,
     extract_text, final_payload, hex_bytes, is_read_only, kline_source, parse_can_response_ex,
@@ -57,6 +58,16 @@ class Module:
     dtcs: List[DTC] = field(default_factory=list)
     error: str = ""
     notes: List[str] = field(default_factory=list)  # оговорки: обрезанные ответы и т. п.
+    ident: Dict[str, str] = field(default_factory=dict)  # разобранный 1A86
+
+    @property
+    def catalog(self) -> Optional[dict]:
+        return find_ecu(self.bus, self.address, self.reply, self.line, self.part_number)
+
+    @property
+    def title(self) -> str:
+        """Что это за блок по справочнику (data/ecus_w639.json), с пометкой уверенности."""
+        return ecu_title(self.catalog)
 
     @property
     def name(self) -> str:
@@ -72,6 +83,7 @@ class Module:
             "part_number": self.part_number, "ident_text": self.ident_text,
             "ident_raw": self.ident_raw, "error": self.error, "notes": self.notes,
             "dtcs": [d.to_dict() for d in self.dtcs],
+            "title": self.title, "ident": self.ident,
         }
 
 
@@ -375,8 +387,15 @@ class ElmLink:
             if text and text not in module.ident_text:
                 module.ident_text = (module.ident_text + " | " + text).strip(" |")
             # 1A90 / 22F190 — это VIN: в его цифрах регулярка «находит» ложный номер детали.
-            if not module.part_number and req not in ("1A90", "22F190"):
-                module.part_number = extract_part_number(payload) or ""
+            if req == "1A86":
+                module.ident.update(decode_1a86(payload))
+            if req not in ("1A90", "22F190"):
+                found = extract_part_number(payload) or ""
+                if not module.part_number:
+                    module.part_number = found
+                elif module.part_number == found + " (?)":
+                    # Номер из BCD подтверждён текстом (1A87) — снимаем «(?)».
+                    module.part_number = found
 
     # Группы ошибок KWP2000 (старшие биты первого байта кода): P, C, B, U.
     KWP_DTC_GROUPS = (0x0000, 0x4000, 0x8000, 0xC000)
@@ -403,6 +422,31 @@ class ElmLink:
         if len(seen) < total:
             module.notes.append(f"блок сообщает ошибок: {total}, прочитано: {len(seen)}")
         return list(seen.values())
+
+    def read_dtc_details(self, module: Module) -> None:
+        """KWP 17 hi lo для каждой ошибки: статус и данные окружения (только чтение).
+
+        Раскладка данных окружения у Mercedes своя для каждого блока и нигде не
+        опубликована, поэтому сохраняем их сырыми — разбирать по логам.
+        """
+        if module.protocol != "kwp":
+            return
+        for d in module.dtcs:
+            raw = d.extra.get("raw", "")
+            if len(raw) != 4:
+                continue
+            try:
+                payload = self.request(module, bytes([0x17]) + bytes.fromhex(raw))
+                check_positive(payload, 0x17)
+            except DiagError as e:
+                d.extra["details_error"] = str(e)
+                continue
+            truncated = module.bus == "can" and self.truncated
+            d.extra["details_raw"] = hex_bytes(payload) + (" …(обрезано)" if truncated else "")
+            # 57 <кол-во> hi lo статус [данные окружения]
+            if len(payload) >= 5 and f"{payload[2]:02X}{payload[3]:02X}" == raw:
+                d.extra["details_status"] = f"0x{payload[4]:02X}"
+                d.extra["details_env"] = hex_bytes(payload[5:])
 
     def read_dtcs(self, module: Module) -> None:
         """Читает ошибки: сначала KWP2000 (0x18), затем UDS (0x19)."""

@@ -26,11 +26,36 @@ _NOISE = re.compile(r"^WARNING:pint\.util")
 ALL_LINES = "7,8,9,11"
 
 
+def _catalog_title(m):
+    """Название блока для отчётов, сохранённых до появления справочника."""
+    from vito_diag.ecus import ecu_title, find_ecu
+
+    try:
+        reply = int(m["reply"], 16) if m.get("reply") else 0
+        e = find_ecu(m["bus"], int(m["address"], 16), reply, m.get("line", "7"),
+                     m.get("part_number", ""))
+    except (KeyError, ValueError):
+        return ""
+    return ecu_title(e)
+
+
 def build_args(action: str, port: str = "", baudrate: str = "", line: str = "7",
-               block: str = "", demo: bool = False, switch: bool = False) -> list:
+               block: str = "", demo: bool = False, switch: bool = False, hub: str = "",
+               details: bool = True) -> list:
     """Аргументы python -m vito_diag для кнопки окна.
 
-    switch — авто-переключатель линий на HC-06, через тот же мост ESP32 (--switch bt)."""
+    switch — авто-переключатель линий на HC-06, через тот же мост ESP32 (--switch bt).
+    hub — порт obd_hub: кнопки блоков («Коробка», «ESP»…) читают их по CAN через него,
+    шину и адрес программа берёт из справочника, переключать контакты не нужно."""
+    if action in ("module", "all-modules"):
+        if demo:
+            raise ValueError("Блоки читаются только с машины: снимите «Демо»")
+        if not hub:
+            raise ValueError("Выберите порт блока obd_hub (Arduino) в поле «obd_hub»")
+        tail = ["--details"] if details else []
+        if action == "all-modules":
+            return ["ecu", "scan-can", "--hub", hub] + tail
+        return ["ecu", "read", "--hub", hub, "--can", block] + tail
     if line == ALL_LINES and not (switch and action == "scan-all"):
         raise ValueError("Все линии сразу — только «Найти все блоки» с включённым авто-переключателем")
     common = []
@@ -120,6 +145,9 @@ def format_saved(path: Path) -> str:
         else:
             name = f"K-line (конт. {m.get('line', '7')}) {m['address']}"
         out.append(f"\n■ {name}  протокол: {m.get('protocol') or '?'}")
+        title = m.get("title") or _catalog_title(m)
+        if title:
+            out.append(f"    блок: {title}")
         if m.get("part_number"):
             out.append(f"    номер детали: {m['part_number']}")
         for note in m.get("notes", []):
@@ -155,18 +183,36 @@ def list_ports():
     return [(p.device, p.description) for p in lp.comports()]
 
 
-def bridge_exchange(port: str, lines, wait: float = 2.5) -> str:
-    """Отправить строки в мост ESP32 (или адаптер) и вернуть всё, что пришло в ответ."""
+def guess_hub_port() -> str:
+    """Порт obd_hub: Arduino (VID 2341/2A03) или CH340 (VID 1A86). Описание в Windows
+    бывает локализованным («Устройство с последовательным интерфейсом USB»), поэтому по VID."""
+    try:
+        from serial.tools import list_ports as lp
+    except ImportError:
+        return ""
+    for p in lp.comports():
+        if p.vid in (0x2341, 0x2A03, 0x1A86) or "Arduino" in (p.description or ""):
+            return p.device
+    return ""
+
+
+def bridge_exchange(port: str, lines, wait: float = 2.5, cancel=None) -> str:
+    """Отправить строки в мост ESP32 (или адаптер) и вернуть всё, что пришло в ответ.
+
+    cancel — threading.Event: если взведён, обмен прерывается между чтениями.
+    """
     from vito_diag.elm import open_serial
 
     ser = open_serial(port, baudrate=38400, timeout=0.2)
     out = []
     try:
         for line, pause in lines:
+            if cancel is not None and cancel.is_set():
+                break
             ser.write((line + ("\n" if line.startswith("~") else "\r")).encode("ascii"))
             end = time.time() + (pause or wait)
             buf = b""
-            while time.time() < end:
+            while time.time() < end and not (cancel is not None and cancel.is_set()):
                 buf += ser.read(256)
             out.append(f">> {line}\n" + buf.decode("ascii", errors="replace").replace("\r", "\n").strip())
     finally:
@@ -179,6 +225,9 @@ class App:
         self.root = root
         self.proc = None
         self.busy = False
+        self.cancel = None  # threading.Event текущей проверки моста
+        self.buttons = []
+        self.job = 0        # номер задания: ответы отменённого задания не показываем
         self.queue = queue.Queue()
         root.title("vito_diag — диагностика Mercedes Vito")
         root.geometry("900x700")
@@ -190,6 +239,8 @@ class App:
         self.line = tk.StringVar(value="7")
         self.block = tk.StringVar(value="12")
         self.switch = tk.BooleanVar(value=False)
+        self.hub = tk.StringVar()
+        self.details = tk.BooleanVar(value=True)
         self.status = tk.StringVar(value="Готово")
 
         pad = {"padx": 6, "pady": 4}
@@ -203,11 +254,32 @@ class App:
         ttk.Label(conn, text="Скорость:").grid(row=0, column=3, sticky="e", **pad)
         ttk.Entry(conn, textvariable=self.baud, width=8).grid(row=0, column=4, **pad)
         ttk.Checkbutton(conn, text="Демо (без машины)", variable=self.demo).grid(row=0, column=5, **pad)
+        ttk.Label(conn, text="obd_hub:").grid(row=1, column=0, sticky="w", **pad)
+        self.hub_box = ttk.Combobox(conn, textvariable=self.hub, width=40)
+        self.hub_box.grid(row=1, column=1, sticky="we", **pad)
+        ttk.Label(conn, text="Arduino с CAN и реле — для кнопок блоков").grid(
+            row=1, column=2, columnspan=4, sticky="w", **pad)
         conn.columnconfigure(1, weight=1)
+
+        from vito_diag.ecus import gui_modules
+
+        mods = ttk.LabelFrame(root, text="Блоки машины — ошибки и идентификация (через obd_hub, только чтение)")
+        mods.pack(fill="x", **pad)
+        grid = ttk.Frame(mods)
+        grid.pack(fill="x")
+        for i, m in enumerate(gui_modules()):
+            b = ttk.Button(grid, text=m["button"], width=22,
+                           command=lambda m=m: self.run("module", block=m["can"], title=m["name"]))
+            b.grid(row=i // 4, column=i % 4, padx=4, pady=2, sticky="we")
+            self.buttons.append(b)
+        mrow = ttk.Frame(mods)
+        mrow.pack(fill="x")
+        self._button(mrow, "Все блоки (CAN, ~5 мин)", lambda: self.run("all-modules", title="все блоки"))
+        ttk.Checkbutton(mrow, text="Подробности ошибок (пробег, условия)", variable=self.details
+                        ).pack(side="left", padx=6)
 
         bridge = ttk.LabelFrame(root, text="Мост ESP32 и адаптер")
         bridge.pack(fill="x", **pad)
-        self.buttons = []
         self._button(bridge, "Проверить связь", self.check_link)
         self._button(bridge, "Переподключить адаптер", self.reconnect)
         ttk.Label(bridge, text="Если «connect failed» — выньте адаптер на 5–10 с и вставьте обратно."
@@ -239,7 +311,7 @@ class App:
 
         tools = ttk.Frame(root)
         tools.pack(fill="x", **pad)
-        self.stop_btn = ttk.Button(tools, text="Остановить", command=self.stop, state="disabled")
+        self.stop_btn = ttk.Button(tools, text="Отмена", command=self.stop, state="disabled")
         self.stop_btn.pack(side="left", **pad)
         ttk.Button(tools, text="Сохранённые результаты", command=self.show_saved).pack(side="left", **pad)
         ttk.Button(tools, text="Открыть последний отчёт", command=self.open_report).pack(side="left", **pad)
@@ -266,7 +338,7 @@ class App:
         self.busy = busy
         for b in self.buttons:
             b.configure(state="disabled" if busy else "normal")
-        self.stop_btn.configure(state="normal" if busy and self.proc else "disabled")
+        self.stop_btn.configure(state="normal" if busy else "disabled")
         self.status.set(text)
 
     def write(self, text: str):
@@ -281,7 +353,9 @@ class App:
     def _drain(self):
         try:
             while True:
-                kind, data = self.queue.get_nowait()
+                kind, data, *job = self.queue.get_nowait()
+                if job and job[0] != self.job:
+                    continue  # задание уже отменено
                 if kind == "text":
                     self.write(data)
                 elif kind == "done":
@@ -293,6 +367,9 @@ class App:
 
     def _port(self) -> str:
         return self.port.get().split(" ")[0].strip()
+
+    def _hub(self) -> str:
+        return self.hub.get().split(" ")[0].strip()
 
     @staticmethod
     def _open(path: Path):
@@ -312,6 +389,10 @@ class App:
         guess = next((d for d, desc in ports if "USB Serial" in desc or "FTDI" in desc), "")
         if guess and not self._port():
             self.port.set(guess)
+        self.hub_box["values"] = self.port_box["values"]
+        hub = guess_hub_port()
+        if hub and not self._hub():
+            self.hub.set(hub)
 
     def _need_port(self) -> bool:
         if self.demo.get() or self._port():
@@ -319,16 +400,20 @@ class App:
         messagebox.showwarning("Порт", "Выберите COM-порт адаптера (кнопка «Обновить»).")
         return False
 
-    def run(self, action: str):
-        if self.busy or not self._need_port():
+    def run(self, action: str, block: str = "", title: str = ""):
+        hub_only = action in ("module", "all-modules")
+        if self.busy or not (hub_only or self._need_port()):
             return
         try:
             args = build_args(action, self._port(), self.baud.get().strip(), self.line.get(),
-                              self.block.get(), self.demo.get(), self.switch.get())
+                              block or self.block.get(), self.demo.get(), self.switch.get(),
+                              hub=self._hub(), details=self.details.get())
         except ValueError as e:
             messagebox.showwarning("vito_diag", str(e))
             return
         cmd = [sys.executable, "-u", "-m", "vito_diag"] + args
+        if title:
+            self.write(f"\n### {title}")
         self.write(f"\n$ python -m vito_diag {' '.join(args)}\n")
         env = dict(os.environ, PYTHONIOENCODING="utf-8")
         flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
@@ -366,26 +451,30 @@ class App:
             return
         port = self._port()
         self.write(f"\n# {title} ({port})\n")
-        self._set_busy(True, title + "...")
+        self.job += 1
+        jid, cancel = self.job, threading.Event()
+        self.cancel = cancel
+        self._set_busy(True, title + "... (нет связи — «Отмена»)")
 
         def work():
             try:
-                self.queue.put(("text", job(port) + "\n"))
-                self.queue.put(("done", "Готово"))
+                self.queue.put(("text", job(port, cancel) + "\n", jid))
+                self.queue.put(("done", "Готово", jid))
             except Exception as e:  # порт занят, не найден и т. п.
-                self.queue.put(("text", f"ОШИБКА: {e}\n"))
-                self.queue.put(("done", "Ошибка связи"))
+                self.queue.put(("text", f"ОШИБКА: {e}\n", jid))
+                self.queue.put(("done", "Ошибка связи", jid))
 
         threading.Thread(target=work, daemon=True).start()
 
     def check_link(self):
         self._bridge("Проверка связи",
-                     lambda port: bridge_exchange(port, [("~STATE", 2), ("ATI", 2), ("AT RV", 2)]))
+                     lambda port, cancel: bridge_exchange(port, [("~STATE", 2), ("ATI", 2), ("AT RV", 2)],
+                                                          cancel=cancel))
 
     def reconnect(self):
-        def job(port):
+        def job(port, cancel):
             # ~USE нужен адрес адаптера — берём сохранённый в мосте из ~STATE.
-            state = bridge_exchange(port, [("~STATE", 2)])
+            state = bridge_exchange(port, [("~STATE", 2)], cancel=cancel)
             m = re.search(r"addr=([0-9a-fA-F:]{17})", state)
             if not m:
                 return state + "\nАдрес адаптера в мосте не сохранён."
@@ -395,7 +484,7 @@ class App:
             if addr.lower() == DEFAULT_HC06:  # прерванная работа оставила мост на переключателе
                 addr = DEFAULT_ELM
             # первое подключение после смены устройства у моста не проходит — сначала ~SCAN
-            return bridge_exchange(port, [("~SCAN", 13), (f"~USE {addr}", 15), ("AT RV", 2)])
+            return bridge_exchange(port, [("~SCAN", 13), (f"~USE {addr}", 15), ("AT RV", 2)], cancel=cancel)
 
         self._bridge("Переподключение адаптера", job)
 
@@ -403,6 +492,14 @@ class App:
         if self.proc and self.proc.poll() is None:
             self.proc.terminate()
             self.write("\n[остановлено]\n")
+        elif self.busy and self.cancel is not None:
+            # Открытие COM-порта без связи может висеть десятки секунд и не прерывается —
+            # окно освобождаем сразу, а поздний ответ задания просто не показываем.
+            self.cancel.set()
+            self.cancel = None
+            self.job += 1
+            self.write("[отменено: связи нет]\n")
+            self._set_busy(False, "Отменено")
 
     def open_report(self):
         """Последний HTML-отчёт скана двигателя с реальной машины (демо пропускаем)."""

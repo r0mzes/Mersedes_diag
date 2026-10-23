@@ -144,10 +144,20 @@ def _module_from_args(args):
     raise ValueError("Укажите блок: --can 7E0[:7E8] или --kline 10")
 
 
+def _format_ident(ident):
+    names = (("hw", "железо"), ("sw", "ПО"), ("supplier", "поставщик"),
+             ("diag_variant", "вариант диагностики"), ("produced", "выпущен"))
+    return ", ".join(f"{label} {ident[key]}" for key, label in names if ident.get(key))
+
+
 def _print_module(m):
     print(f"\n■ {m.name}  протокол: {m.protocol or '?'}")
+    if m.title:
+        print(f"    блок: {m.title}")
     if m.part_number:
         print(f"    номер детали: {m.part_number}")
+    if m.ident:
+        print("    " + _format_ident(m.ident))
     if m.ident_text:
         print(f"    идентификация: {m.ident_text}")
     for req, raw in m.ident_raw.items():
@@ -161,6 +171,11 @@ def _print_module(m):
     for d in m.dtcs:
         print(f"    {d.code} (сырой {d.extra['raw']}, статус {d.extra['status_byte']}: "
               f"{', '.join(d.extra['status'])}) — {d.description}")
+        if d.extra.get("details_raw"):
+            env = d.extra.get("details_env")
+            print(f"        [17] {d.extra['details_raw']}" + (f"  (данные окружения: {env})" if env else ""))
+        elif d.extra.get("details_error"):
+            print(f"        [17] {d.extra['details_error']}")
 
 
 def _save_modules(modules, args, extra=None):
@@ -176,19 +191,67 @@ def _save_modules(modules, args, extra=None):
     return path
 
 
-def _read_modules(link, modules, can_link=None):
+def _read_modules(link, modules, can_link=None, details=False):
     from vito_diag.protocol import DiagError
 
     for m in modules:
         if m.bus == "can" and can_link is not None:
-            _read_modules(can_link, [m])
+            _read_modules(can_link, [m], details=details)
             continue
         try:
             link.identify(m)
             link.read_dtcs(m)
+            if details:
+                link.read_dtc_details(m)
         except DiagError as e:
             m.error = str(e)
         _print_module(m)
+
+
+def _live(args, link, can_link, sw, line):
+    """ecu dump / ecu record: живые данные блока (служба 21, только чтение)."""
+    import json
+    from datetime import datetime
+    from pathlib import Path
+
+    from vito_diag.livedata import changing_bytes, dump_lids, record
+
+    args.line = line
+    m = _module_from_args(args)
+    if m.bus == "kline":
+        _select_line(link, sw, m.line)
+    lk = can_link if m.bus == "can" else link
+    out = Path(args.reports_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    tag = f"{m.address:03X}" if m.bus == "can" else f"kl{m.address:02X}"
+    if args.action == "dump":
+        lids = _parse_addr_list(args.lids or "01-FF")
+        found = dump_lids(lk, m, lids, lambda x: print(f"\r  LID 0x{x:02X}", end="", flush=True))
+        print(f"\n  ответили LID: {len(found)}")
+        for lid, data in found.items():
+            print(f"    21 {lid:02X} -> {data}")
+        path = out / f"live_{tag}_{stamp}.json"
+        path.write_text(json.dumps({"module": m.name, "created": stamp, "lids":
+                                    {f"{k:02X}": v for k, v in found.items()}},
+                                   ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"\nРезультат: {path}\nЛог обмена: {lk.log_path}")
+        return 0
+    if not args.lids:
+        print("Для record укажите --lids (из ecu dump), например --lids 01,02,05")
+        return 1
+    path = out / f"rec_{tag}_{stamp}.csv"
+    print(f"Запись {args.seconds:.0f} с: {m.name}, LID {args.lids}. Ctrl+C — остановить раньше.")
+    try:
+        rows = record(lk, m, _parse_addr_list(args.lids), args.seconds, path)
+    except KeyboardInterrupt:
+        print("\nОстановлено.")
+        return 0
+    print(f"  опросов: {len(rows)}")
+    for c in changing_bytes(rows):
+        print(f"    21 {c['lid']:02X} байт {c['index']}: {c['min']}..{c['max']} ({c['values']} значений)")
+    print(f"\nЗапись: {path}\nЛог обмена: {lk.log_path}")
+    return 0
 
 
 def _select_line(link, sw, line):
@@ -269,6 +332,9 @@ def cmd_ecu(args):
                 print(f"  0x{cid:03X}: {n} кадров")
             return 0
 
+        if args.action in ("dump", "record"):
+            return _live(args, link, can_link, sw, lines[0])
+
         if args.action in ("raw", "read"):
             args.line = lines[0]
             m = _module_from_args(args)
@@ -279,7 +345,7 @@ def cmd_ecu(args):
                 print(hex_bytes(payload))
                 return 0
             modules = [m]
-            _read_modules(link, modules, can_link)
+            _read_modules(link, modules, can_link, details=args.details)
         if args.action in ("scan-can", "scan-all"):
             print("Поиск блоков на CAN (контакты 6/14). Займёт несколько минут...")
             found = can_link.scan_can(int(args.start, 16), int(args.end, 16), can_progress)
@@ -287,7 +353,7 @@ def cmd_ecu(args):
                 print("\n  ! Адаптер игнорирует адрес запроса (ATSH) — перебор CAN ID пропущен.\n"
                       "    Видны только блоки, отвечающие на общий OBD-запрос.")
             print(f"\n  найдено на CAN: {len(found)}")
-            _read_modules(can_link, found)
+            _read_modules(can_link, found, details=args.details)
             modules += found
         if args.action in ("scan-kline", "scan-all") and not link.has_kline:
             print("Самодельный CAN-адаптер не работает с K-line — поиск на K-line пропущен.")
@@ -299,7 +365,7 @@ def cmd_ecu(args):
                 found = link.scan_kline(addrs, line=line, slow="only" if args.slow_only else args.slow,
                                        progress=kline_progress)
                 print(f"\n  найдено на K-line (конт. {line}): {len(found)}")
-                _read_modules(link, found)
+                _read_modules(link, found, details=args.details)
                 modules += found
     finally:
         if hub:
@@ -452,9 +518,12 @@ def build_parser():
 
     e = sub.add_parser("ecu", parents=[common],
                        help="опрос блоков напрямую через ELM327: поиск, идентификация, ошибки")
-    e.add_argument("action", choices=["monitor", "scan-can", "scan-kline", "scan-all", "read", "raw"],
+    e.add_argument("action", choices=["monitor", "scan-can", "scan-kline", "scan-all", "read", "raw",
+                                      "dump", "record"],
                    help="monitor — послушать CAN; scan-* — найти блоки; read — прочитать блок; "
-                        "raw — отправить свой запрос")
+                        "raw — отправить свой запрос; dump — какие LID службы 21 отвечают; "
+                        "record — записать выбранные LID во времени (только чтение)")
+    e.add_argument("--lids", help="dump/record: LID службы 21, hex (например '01-3F' или '01,05')")
     e.add_argument("request", nargs="?", help="для raw: запрос в hex, например '1A 86'")
     e.add_argument("--can", help="блок на CAN: ID запроса[:ID ответа], hex (например 7E0:7E8)")
     e.add_argument("--kline", help="блок на K-line: адрес, hex (например 10)")
@@ -470,7 +539,9 @@ def build_parser():
     e.add_argument("--slow", action="store_true", help="scan-kline: пробовать и медленную 5-бод инициализацию")
     e.add_argument("--slow-only", action="store_true",
                    help="scan-kline: только медленная 5-бод инициализация (быструю уже проверили)")
-    e.add_argument("--seconds", type=float, default=5.0, help="monitor: сколько секунд слушать")
+    e.add_argument("--details", action="store_true",
+                   help="read/scan-*: для каждой ошибки KWP запросить 17 (статус и данные окружения, только чтение)")
+    e.add_argument("--seconds", type=float, default=5.0, help="monitor/record: сколько секунд")
     e.add_argument("--unsafe", action="store_true",
                    help="разрешить запросы, меняющие данные в блоках (НЕ использовать без необходимости)")
     e.set_defaults(func=cmd_ecu)
