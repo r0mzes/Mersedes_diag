@@ -30,9 +30,29 @@
 # поправьте BOARDS.
 
 import os
+import sys
+import importlib
 import FreeCAD as App
 import Part
 from FreeCAD import Vector as V
+
+
+def _here():
+    try:
+        return os.path.dirname(os.path.abspath(__file__))
+    except NameError:
+        pass
+    for p in sys.path:
+        if os.path.exists(os.path.join(p, "esp32_boards.py")):
+            return p
+    return os.getcwd()
+
+
+HERE = _here()
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+import esp32_boards as eb  # макетки с деталями и разводкой (esp32_block_boards.FCMacro)
+importlib.reload(eb)
 
 # ============================== ПАРАМЕТРЫ ==============================
 L = 180.0          # наружная длина
@@ -74,8 +94,8 @@ FUSE_D, FUSE_LEN = 13.5, 52.0  # держатель 5x20 в проводе: ди
 # Положение плат: левый нижний угол, от наружного угла корпуса
 B_X, B_Y = 19.0, 4.0                       # плата питания и делителей (у гермоввода)
 A_X, A_Y = 78.0, 4.0                       # плата логики, ESP32 у правого края
-ESP_X = A_X + PERF_A[0] - ESP_W - 3.5      # ESP32 на плате логики, USB-C к передней стенке
-ESP_Y = A_Y
+ESP_X = A_X + eb.esp_local()[0]            # ESP32 на плате логики, USB-C к передней стенке
+ESP_Y = A_Y + eb.esp_local()[1]
 ROW2_Y = 80.0                              # задний ряд
 FUSE_X = 12.5                              # ложемент предохранителя (ось вдоль Y)
 BUCK_X = 32.0
@@ -282,65 +302,25 @@ def pcb_with_holes(sx, sy, holes, d=3.0):
     return s
 
 
-def parts_esp32(ox, oy, oz):
-    """ESP32 DevKit 30 pin на гнёздах: USB-C со стороны y=0, антенна на y=ESP_L."""
-    t = PCB_T
-    rx = (ESP_W - ESP_ROW) / 2
-    z = oz + HDR_F
-    p = []
-    for x in (rx, rx + ESP_ROW):  # гнёзда PLS-15 «мама» на макетке
-        p.append(("Socket", box(ox + x - 1.27, oy + 7.9, oz, 2.54, 38.1, HDR_F), C_BLACK))
-    p += [("ESP32_PCB", box(ox, oy, z, ESP_W, ESP_L, t), C_PCB_BLACK),
-          ("WROOM_shield", box(ox + (ESP_W - 18) / 2, oy + ESP_L - 25.5, z + t, 18.0, 18.0, 3.2), C_METAL),
-          ("WROOM_antenna", box(ox + (ESP_W - 18) / 2, oy + ESP_L - 7.0, z + t, 18.0, 7.0, 0.8),
-           C_PCB_BLACK),
-          ("USB_C", box(ox + (ESP_W - 9.0) / 2, oy - 1.0, z + t, 9.0, 7.5, 3.2), C_METAL),
-          ("BTN_EN", box(ox + 1.5, oy + 2.5, z + t, 4.0, 3.0, 1.8), C_METAL),
-          ("BTN_BOOT", box(ox + ESP_W - 5.5, oy + 2.5, z + t, 4.0, 3.0, 1.8), C_METAL),
-          ("USB_UART", box(ox + (ESP_W - 5) / 2, oy + 12.0, z + t, 5.0, 5.0, 1.2), C_BLACK),
-          ("LDO", box(ox + (ESP_W - 6.5) / 2, oy + 19.0, z + t, 6.5, 3.5, 1.6), C_BLACK)]
-    return p
+_BOARDS = {}
+
+
+def lib_board(key):
+    """Плата из esp32_boards.py (детали, дорожки и провода снизу)."""
+    if not _BOARDS:
+        for b in eb.boards(os.path.join(HERE, "esp32_boards_wiring.json")):
+            _BOARDS[b.key] = b
+    return [(n, sh, col) for n, sh, col in eb.shapes(_BOARDS[key], holes=False)]
 
 
 def parts_logic(sx, sy, holes):
-    """Макетка 7x9: SN65HVD230, преобразователь уровней, L9637D, 510 Ом, ESP32."""
-    t = PCB_T
-    p = [("PCB", pcb_with_holes(sx, sy, holes), C_PERF),
-         # SN65HVD230 (CJMCU-230), ближе к плате питания — CAN 6/14 оттуда
-         ("SN65HVD230", box(5.0, 6.0, t, 22.0, 16.0, PCB_T), C_PCB_BLUE),
-         ("SN65_pins", box(5.0, 6.0, t + PCB_T, 2.54, 15.24, 8.5), C_BLACK),
-         ("SN65_chip", box(14.0, 11.0, t + PCB_T, 5.0, 4.0, 1.7), C_BLACK),
-         # преобразователь уровней 8 каналов на штырях
-         ("Level8", box(33.0, 8.0, t + 2.5, 22.0, 16.0, PCB_T), C_PCB_RED),
-         ("Level8_pins", box(33.0, 8.0, t, 22.0, 16.0, 2.5), C_BLACK),
-         ("Level8_chip", box(40.0, 13.0, t + 2.5 + PCB_T, 8.0, 5.0, 1.2), C_BLACK),
-         # L9637D на переходнике SOP8 -> DIP8
-         ("L9637D_adapter", box(30.0, 40.0, t + 2.5, 11.0, 13.0, PCB_T), C_PCB_GREEN),
-         ("L9637D_pins", box(30.5, 41.0, t, 10.0, 11.0, 2.5), C_BLACK),
-         ("L9637D", box(33.0, 44.0, t + 2.5 + PCB_T, 5.0, 4.0, 1.75), C_BLACK),
-         # 510 Ом 1 Вт (подтяжка K-line), лёжа
-         ("R510_1W", cyl(8.0, 47.0, t + 2.5, 4.0, 12.0, (1, 0, 0)), C_RES),
-         ("C100n", box(24.0, 30.0, t, 4.0, 2.5, 5.0), C_CAP)]
-    p += parts_esp32(ESP_X - A_X, ESP_Y - A_Y, t)
-    return p
+    """Макетка 7x9: ESP32, SN65HVD230, L9637D, преобразователь уровней, BAT54S (под ESP32)."""
+    return lib_board("A")
 
 
 def parts_powerdiv(sx, sy, holes):
     """Макетка 5x7: клеммы OBD, защита питания, 6 делителей."""
-    t = PCB_T
-    p = [("PCB", pcb_with_holes(sx, sy, holes), C_PERF)]
-    for i in range(3):  # 3 клеммника KF301-3P, вход проводов — к гермовводу (влево)
-        p.append(("KF301_%d" % (i + 1), box(1.0, 12.0 + i * 15.0, t, 7.5, 15.0, 10.0), C_TERM))
-    for i in range(6):  # делители 100k/22k + 10 нФ стоя
-        x = 16.0 + i * 5.0
-        p.append(("R%d_100k" % (i + 1), cyl(x, 8.0, t, 2.4, 6.5), C_RES))
-        p.append(("R%d_22k" % (i + 1), cyl(x, 16.0, t, 2.4, 6.5), C_RES))
-        p.append(("C%d_10n" % (i + 1), box(x - 2.0, 21.5, t, 4.0, 2.5, 5.0), C_CAP))
-    p += [("SS34", box(20.0, 52.0, t, 7.0, 6.0, 2.3), C_BLACK),
-          ("SMBJ24A", box(31.0, 52.0, t, 5.5, 4.0, 2.3), C_BLACK),
-          ("C100u_50V", cyl(17.0, 62.0, t + 5.0, 10.0, 20.0, (1, 0, 0)), C_PCB_BLUE),
-          ("C100n", box(40.0, 52.0, t, 4.0, 2.5, 5.0), C_CAP)]
-    return p
+    return lib_board("B")
 
 
 def parts_buck(sx, sy, holes):
@@ -403,9 +383,9 @@ def make_boards(doc):
 
 def antenna_keepout():
     """Зона перед антенной ESP32 (до задней стенки), где не должно быть металла."""
-    x0 = ESP_X - 3.0
+    x0 = ESP_X - 1.0
     y0 = ESP_Y + ESP_L - 7.0
-    return box(x0, y0, FLOOR, ESP_W + 6.0, W - WALL - y0, H_BASE - FLOOR)
+    return box(x0, y0, FLOOR, ESP_W + 2.0, W - WALL - y0, H_BASE - FLOOR)
 
 
 def build(doc):
@@ -474,6 +454,8 @@ def draw_layout(boards, base, keep, path):
             va="top", fontsize=8, color="#2e7d32")
     for cx, cy in boss_centers():
         ax.add_patch(Circle((cx, cy), BOSS_D / 2, fc="#bbb", ec="#555"))
+    # дорожки, провода и выводы макеток на этой схеме не рисуем — они на board_*.png
+    boards = [oc for oc in boards if not any(k in oc[0].Name for k in ("_Trace_", "_Wire_", "_Pins_"))]
     order = sorted(boards, key=lambda oc: oc[0].Shape.BoundBox.ZMin)
     for o, color in order:
         b = o.Shape.BoundBox
@@ -486,14 +468,14 @@ def draw_layout(boards, base, keep, path):
         ax.add_patch(Circle((x, y), d / 2 + 0.8, fc="none", ec="#ff6f00", lw=1.2))
     notes = [
         (B_X + PERF_B[0] / 2, B_Y + 38, "плата питания\nи делителей\n5x7"),
-        (A_X + 22, A_Y + 30, "плата логики 7x9"),
+        (A_X + 22, A_Y + 60, "плата логики 7x9"),
         (ESP_X + ESP_W / 2, ESP_Y + 30, "ESP32\nDevKit"),
         (BUCK_X + LM2596[1] / 2, ROW2_Y + 30, "LM2596"),
         (FUSE_X + 8, ROW2_Y + 40, "пред.\n1 А"),
         (RELAY_X + RELAY4[0] / 2, ROW2_Y + 26, "модуль 4 реле"),
-        (A_X + 16, A_Y + 14, "SN65HVD230"),
-        (A_X + 44, A_Y + 27, "ур. 3,3/5 В"),
-        (A_X + 36, A_Y + 56, "L9637D"),
+        (A_X + 27, A_Y + 18, "SN65HVD230"),
+        (A_X + 44, A_Y + 46, "ур. 3,3/5 В"),
+        (A_X + 30, A_Y + 37, "L9637D"),
     ]
     for x, y, t in notes:
         ax.text(x, y, t, ha="center", va="center", fontsize=8.5, weight="bold",
@@ -549,8 +531,10 @@ def export(base, lid, folder):
 
 doc = App.newDocument("ESP32_Block_Case")
 base, lid, boards, keep = build(doc)
-for m in check(boards, base):
+msgs = check(boards, base)
+for m in msgs:
     App.Console.PrintWarning("Компоновка: " + m + "\n")
+print("Компоновка: %s" % ("; ".join(msgs) if msgs else "замечаний нет"))
 folder = EXPORT_DIR
 if folder is None and not App.GuiUp:
     try:
