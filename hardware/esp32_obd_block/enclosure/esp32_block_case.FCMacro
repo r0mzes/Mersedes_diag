@@ -1,0 +1,570 @@
+# -*- coding: utf-8 -*-
+# Корпус блока vito_diag на ESP32 (hardware/esp32_obd_block): ESP32 DevKit 30 pin Type-C,
+# L9637D на переходнике, преобразователь уровней 8 каналов, SN65HVD230, модуль 4 реле,
+# LM2596, плата питания и делителей, предохранитель 5x20 в проводе. Параметрический:
+# все размеры — в блоке ПАРАМЕТРЫ.
+#
+# Запуск в FreeCAD: Макросы → Макросы… → выбрать этот файл → Выполнить. Создаётся документ
+# «ESP32_Block_Case»:
+#   Base   — основание (печатать дном вниз),
+#   Lid    — крышка (в STL уже перевёрнута верхом вниз),
+#   Boards — модели плат для проверки компоновки (не печатать),
+#   Antenna_keepout — зона перед антенной ESP32, где не должно быть металла и проводов.
+# Без GUI: freecadcmd esp32_block_case.FCMacro — STEP/STL, FCStd и layout.png пишутся в папку
+# макроса.
+#
+# Оси: X — вдоль длины (0 — левая стенка, там гермоввод OBD), Y — вглубь (0 — передняя
+# стенка, там USB-C ESP32), Z — вверх (0 — низ дна).
+#
+# Компоновка (вид сверху, передняя стенка внизу):
+#
+#   +----------------------------------------------------------------+
+#   | [пред.] [LM2596]  [ модуль 4 реле ]           (зона антенны)    |
+#   |                                                ^ антенна ESP32  |
+#   |=PG9 [плата питания  ] [плата логики: SN65, L9637D, ур.] [ESP32] |
+#   |      и делителей    ]                                    USB-C  |
+#   +--------------------------------------------------------[окно]--+
+#
+# Размеры модулей — ТИПОВЫЕ (по описаниям и чертежам распространённых плат), не измерены.
+# Перед печатью проверьте штангенциркулем свои модули (особенно реле, LM2596 и макетки) и
+# поправьте BOARDS.
+
+import os
+import FreeCAD as App
+import Part
+from FreeCAD import Vector as V
+
+# ============================== ПАРАМЕТРЫ ==============================
+L = 180.0          # наружная длина
+W = 140.0          # наружная ширина
+H_BASE = 38.0      # высота основания (с дном)
+WALL = 2.5         # толщина стенок
+FLOOR = 3.0        # толщина дна
+R_OUT = 6.0        # радиус скругления вертикальных углов снаружи
+
+LID_T = 3.0        # толщина крышки
+LIP_H = 4.0        # высота бортика крышки, входящего в основание
+LIP_W = 1.6        # толщина бортика
+LIP_GAP = 0.3      # зазор бортика до стенки
+
+BOSS_D = 9.0       # бобышки под винты крышки в углах
+SCREW_PILOT = 2.6  # отверстие под саморез M3 (2.5–2.8 для PETG)
+SCREW_DEPTH = 14.0
+LID_HOLE = 3.4     # отверстие в крышке под M3
+LID_CSK = 6.5      # диаметр зенковки (0 — без зенковки)
+
+POST_D = 6.5       # стойки под платы
+POST_PILOT = 2.6   # отверстие в стойке под саморез M2.5/M3
+POST_H = 6.0       # высота стоек (низ платы над дном)
+
+EARS = True        # ушки снизу на левой и правой стенках — крепление в машине
+EAR_L, EAR_W, EAR_T, EAR_HOLE = 12.0, 24.0, 4.0, 4.5
+
+# Типовые размеры (мм)
+PERF_A = (90.0, 70.0)      # макетка 7x9 см, положена длинной стороной вдоль X
+PERF_B = (50.0, 70.0)      # макетка 5x7 см
+PERF_HOLES = 2.5           # центры крепёжных отверстий макеток от краёв
+ESP_W, ESP_L = 28.5, 54.0  # ESP32 DevKit 30 pin Type-C (продавец: 54x29)
+ESP_ROW = 25.4             # расстояние между рядами выводов
+HDR_F = 8.5                # высота гнёзд PLS «мама», в которые вставлена ESP32
+RELAY4 = (75.0, 55.0)      # модуль 4 реле
+LM2596 = (43.0, 21.0)      # модуль LM2596 (кладём поперёк: 21 по X)
+FUSE_D, FUSE_LEN = 13.5, 52.0  # держатель 5x20 в проводе: диаметр и длина корпуса
+
+# Положение плат: левый нижний угол, от наружного угла корпуса
+B_X, B_Y = 19.0, 4.0                       # плата питания и делителей (у гермоввода)
+A_X, A_Y = 78.0, 4.0                       # плата логики, ESP32 у правого края
+ESP_X = A_X + PERF_A[0] - ESP_W - 3.5      # ESP32 на плате логики, USB-C к передней стенке
+ESP_Y = A_Y
+ROW2_Y = 80.0                              # задний ряд
+FUSE_X = 12.5                              # ложемент предохранителя (ось вдоль Y)
+BUCK_X = 32.0
+RELAY_X = 56.0
+
+PCB_T = 1.6
+A_TOP = FLOOR + POST_H + PCB_T                     # верх макеток
+ESP_PCB_Z = A_TOP + HDR_F                          # низ платы ESP32
+USB_Z = ESP_PCB_Z + PCB_T + 1.6                    # центр гнезда USB-C
+USB_X = ESP_X + ESP_W / 2
+
+# Отверстия в стенках: (стенка, вид, положение вдоль стенки, высота центра Z, размер)
+#   стенка: "left" (x=0), "right" (x=L), "front" (y=0), "back" (y=W)
+#   вид: "circle" -> размер = диаметр; "rect" -> (ширина, высота); "slot" -> (ширина, высота),
+#   скруглённый паз
+HOLES = [
+    # гермоввод PG9 (резьба 15,2 мм) под кабель OBD (удлинитель 16 проводов, 4–8 мм)
+    ("left", "circle", B_Y + 35.0, 20.0, 15.6),
+    # окно под штекер USB-C (литой корпус штекера до 12,5x7 мм) — прошивка без вскрытия
+    ("front", "slot", USB_X, USB_Z, (14.0, 8.5)),
+]
+# вентиляция: ряд пазов внизу спереди (вход) и вверху сзади (выход) — сквозняк через реле
+VENT = [("front", 78.0 + i * 7.0, 16.0, (3.0, 10.0)) for i in range(6)] + \
+       [("back", 62.0 + i * 7.0, 27.0, (3.0, 9.0)) for i in range(9)]
+
+# Отверстия в крышке: (x, y, диаметр). Над светодиодами ESP32 и модуля реле — положение
+# типовое, сверить со своими платами (или оставить [] и просверлить по месту).
+RELAY_PITCH = 16.5                # шаг реле на модуле
+RELAY_LED_X0 = 14.75              # светодиод K1 от левого края модуля
+RELAY_LED_Y = ROW2_Y + 47.0
+LID_HOLES = [(ESP_X + 7.0, ESP_Y + 9.0, 3.0), (ESP_X + ESP_W - 7.0, ESP_Y + 9.0, 3.0)] + \
+            [(RELAY_X + RELAY_LED_X0 + i * RELAY_PITCH, RELAY_LED_Y, 3.0) for i in range(4)]
+
+SHOW_BOARDS = True  # модели плат (только для проверки компоновки, не печатать)
+EXPORT_DIR = None   # None — не сохранять в GUI; в freecadcmd — папка макроса
+# ======================================================================
+
+
+def corner_holes(sx, sy, d=PERF_HOLES):
+    return [(d, d), (sx - d, d), (d, sy - d), (sx - d, sy - d)]
+
+
+# Платы: (имя, x, y, размер X, размер Y, [отверстия от левого нижнего угла платы])
+BOARDS = [
+    ("PowerDiv", B_X, B_Y, PERF_B[0], PERF_B[1], corner_holes(*PERF_B)),
+    ("Logic", A_X, A_Y, PERF_A[0], PERF_A[1], corner_holes(*PERF_A)),
+    ("Buck", BUCK_X, ROW2_Y + 6.0, LM2596[1], LM2596[0], [(3.5, 3.5), (17.5, 39.5)]),
+    ("Relay4", RELAY_X, ROW2_Y, RELAY4[0], RELAY4[1], corner_holes(RELAY4[0], RELAY4[1], 3.0)),
+]
+
+
+def rounded_box(l, w, h, r, x=0.0, y=0.0, z=0.0):
+    """Брусок со скруглёнными вертикальными рёбрами."""
+    r = max(0.01, min(r, l / 2 - 0.01, w / 2 - 0.01))
+    s = Part.makeBox(l - 2 * r, w, h, V(x + r, y, z))
+    s = s.fuse(Part.makeBox(l, w - 2 * r, h, V(x, y + r, z)))
+    for cx, cy in ((r, r), (l - r, r), (r, w - r), (l - r, w - r)):
+        s = s.fuse(Part.makeCylinder(r, h, V(x + cx, y + cy, z)))
+    return s.removeSplitter()
+
+
+def boss_centers():
+    o = WALL + BOSS_D / 2 - 0.5
+    return [(o, o), (L - o, o), (o, W - o), (L - o, W - o)]
+
+
+def slot2d(w, h):
+    """Скруглённый паз в плоскости XZ (w по X, h по Z) толщиной 1, центр в нуле."""
+    r = min(w, h) / 2
+    if w >= h:
+        s = Part.makeBox(w - 2 * r, 1, h, V(-w / 2 + r, 0, -h / 2))
+        for cx in (-w / 2 + r, w / 2 - r):
+            s = s.fuse(Part.makeCylinder(r, 1, V(cx, 0, 0), V(0, 1, 0)))
+    else:
+        s = Part.makeBox(w, 1, h - 2 * r, V(-w / 2, 0, -h / 2 + r))
+        for cz in (-h / 2 + r, h / 2 - r):
+            s = s.fuse(Part.makeCylinder(r, 1, V(0, 0, cz), V(0, 1, 0)))
+    return s
+
+
+def wall_cut(wall, kind, pos, zc, size):
+    depth = WALL * 4
+    if kind == "circle":
+        d = size
+        if wall in ("left", "right"):
+            x = -WALL if wall == "left" else L - 3 * WALL
+            return Part.makeCylinder(d / 2, depth, V(x, pos, zc), V(1, 0, 0))
+        y = -WALL if wall == "front" else W - 3 * WALL
+        return Part.makeCylinder(d / 2, depth, V(pos, y, zc), V(0, 1, 0))
+    w, h = size
+    if kind == "slot":
+        s = slot2d(w, h)
+        m = App.Matrix()
+        m.scale(1, depth, 1)
+        s = s.transformGeometry(m)
+        if wall in ("left", "right"):
+            s.rotate(V(0, 0, 0), V(0, 0, 1), -90)
+            s.translate(V(-WALL if wall == "left" else L - 3 * WALL, pos, zc))
+        else:
+            s.translate(V(pos, -WALL if wall == "front" else W - 3 * WALL, zc))
+        return s
+    if wall in ("left", "right"):
+        x = -WALL if wall == "left" else L - 3 * WALL
+        return Part.makeBox(depth, w, h, V(x, pos - w / 2, zc - h / 2))
+    y = -WALL if wall == "front" else W - 3 * WALL
+    return Part.makeBox(w, depth, h, V(pos - w / 2, y, zc - h / 2))
+
+
+def fuse_cradle():
+    """Два ложемента под держатель предохранителя с пазом под стяжку."""
+    s = None
+    cx = FUSE_X + FUSE_D / 2 + 1.5
+    zc = FLOOR + FUSE_D / 2 + 1.0
+    for y0 in (ROW2_Y + 6.0, ROW2_Y + 6.0 + FUSE_LEN - 8.0):
+        b = Part.makeBox(FUSE_D + 3.0, 8.0, FUSE_D / 2 + 1.0, V(FUSE_X, y0, FLOOR - 0.01))
+        b = b.cut(Part.makeCylinder(FUSE_D / 2, 10.0, V(cx, y0 - 1, zc), V(0, 1, 0)))
+        b = b.cut(Part.makeBox(FUSE_D + 5.0, 3.5, 1.6, V(FUSE_X - 1, y0 + 2.25, FLOOR + 0.6)))
+        s = b if s is None else s.fuse(b)
+    return s
+
+
+def make_base():
+    body = rounded_box(L, W, H_BASE, R_OUT)
+    body = body.cut(rounded_box(L - 2 * WALL, W - 2 * WALL, H_BASE, R_OUT - WALL,
+                                WALL, WALL, FLOOR))
+    for cx, cy in boss_centers():
+        body = body.fuse(Part.makeCylinder(BOSS_D / 2, H_BASE - FLOOR, V(cx, cy, FLOOR)))
+    for _, bx, by, _, _, holes in BOARDS:
+        for hx, hy in holes:
+            body = body.fuse(Part.makeCylinder(POST_D / 2, POST_H, V(bx + hx, by + hy, FLOOR - 0.01)))
+    body = body.fuse(fuse_cradle())
+    if EARS:
+        for x0 in (-EAR_L, L):
+            ear = rounded_box(EAR_L + R_OUT, EAR_W, EAR_T, 4.0,
+                              x0 - (R_OUT if x0 > 0 else 0), (W - EAR_W) / 2, 0)
+            body = body.fuse(ear)
+    for cx, cy in boss_centers():
+        body = body.cut(Part.makeCylinder(SCREW_PILOT / 2, SCREW_DEPTH,
+                                          V(cx, cy, H_BASE - SCREW_DEPTH)))
+    for _, bx, by, _, _, holes in BOARDS:
+        for hx, hy in holes:  # пилот в стойке, в дне остаётся 1 мм
+            body = body.cut(Part.makeCylinder(POST_PILOT / 2, POST_H + FLOOR - 1.0,
+                                              V(bx + hx, by + hy, 1.0)))
+    if EARS:
+        for xc in (-EAR_L / 2, L + EAR_L / 2):
+            body = body.cut(Part.makeCylinder(EAR_HOLE / 2, EAR_T + 2, V(xc, W / 2, -1)))
+    for h in HOLES:
+        body = body.cut(wall_cut(*h))
+    for wall, pos, zc, size in VENT:
+        body = body.cut(wall_cut(wall, "slot", pos, zc, size))
+    return body.removeSplitter()
+
+
+def make_lid():
+    """Крышка в положении сборки: низ пластины на высоте H_BASE."""
+    z0 = H_BASE
+    lid = rounded_box(L, W, LID_T, R_OUT, 0, 0, z0)
+    off = WALL + LIP_GAP
+    lip = rounded_box(L - 2 * off, W - 2 * off, LIP_H, R_OUT - off, off, off, z0 - LIP_H)
+    off2 = off + LIP_W
+    lip = lip.cut(rounded_box(L - 2 * off2, W - 2 * off2, LIP_H, R_OUT - off2, off2, off2,
+                              z0 - LIP_H))
+    for cx, cy in boss_centers():
+        lip = lip.cut(Part.makeCylinder(BOSS_D / 2 + 0.6, LIP_H, V(cx, cy, z0 - LIP_H)))
+    lid = lid.fuse(lip)
+    for cx, cy in boss_centers():
+        lid = lid.cut(Part.makeCylinder(LID_HOLE / 2, LID_T + 1, V(cx, cy, z0 - 0.5)))
+        if LID_CSK > LID_HOLE:
+            depth = (LID_CSK - LID_HOLE) / 2
+            lid = lid.cut(Part.makeCone(LID_HOLE / 2, LID_CSK / 2, depth + 0.01,
+                                        V(cx, cy, z0 + LID_T - depth)))
+    for x, y, d in LID_HOLES:
+        lid = lid.cut(Part.makeCylinder(d / 2, LID_T + 1, V(x, y, z0 - 0.5)))
+    return lid.removeSplitter()
+
+
+# ----------------------------- модели плат -----------------------------
+# Каждая плата строится в своих координатах: (0,0,0) — левый нижний угол низа PCB.
+C_PERF = (0.80, 0.65, 0.35)
+C_PCB_BLUE = (0.05, 0.35, 0.60)
+C_PCB_BLACK = (0.12, 0.12, 0.14)
+C_PCB_RED = (0.70, 0.12, 0.12)
+C_PCB_GREEN = (0.10, 0.45, 0.20)
+C_BLACK = (0.08, 0.08, 0.08)
+C_METAL = (0.75, 0.75, 0.78)
+C_TERM = (0.15, 0.55, 0.25)
+C_RELAY = (0.10, 0.25, 0.75)
+C_RES = (0.85, 0.75, 0.55)
+C_CAP = (0.95, 0.60, 0.10)
+
+
+def box(x, y, z, sx, sy, sz):
+    return Part.makeBox(sx, sy, sz, V(x, y, z))
+
+
+def cyl(x, y, z, d, h, axis=(0, 0, 1)):
+    return Part.makeCylinder(d / 2, h, V(x, y, z), V(*axis))
+
+
+def pcb_with_holes(sx, sy, holes, d=3.0):
+    s = box(0, 0, 0, sx, sy, PCB_T)
+    for hx, hy in holes:
+        s = s.cut(cyl(hx, hy, -1, d, PCB_T + 2))
+    return s
+
+
+def parts_esp32(ox, oy, oz):
+    """ESP32 DevKit 30 pin на гнёздах: USB-C со стороны y=0, антенна на y=ESP_L."""
+    t = PCB_T
+    rx = (ESP_W - ESP_ROW) / 2
+    z = oz + HDR_F
+    p = []
+    for x in (rx, rx + ESP_ROW):  # гнёзда PLS-15 «мама» на макетке
+        p.append(("Socket", box(ox + x - 1.27, oy + 7.9, oz, 2.54, 38.1, HDR_F), C_BLACK))
+    p += [("ESP32_PCB", box(ox, oy, z, ESP_W, ESP_L, t), C_PCB_BLACK),
+          ("WROOM_shield", box(ox + (ESP_W - 18) / 2, oy + ESP_L - 25.5, z + t, 18.0, 18.0, 3.2), C_METAL),
+          ("WROOM_antenna", box(ox + (ESP_W - 18) / 2, oy + ESP_L - 7.0, z + t, 18.0, 7.0, 0.8),
+           C_PCB_BLACK),
+          ("USB_C", box(ox + (ESP_W - 9.0) / 2, oy - 1.0, z + t, 9.0, 7.5, 3.2), C_METAL),
+          ("BTN_EN", box(ox + 1.5, oy + 2.5, z + t, 4.0, 3.0, 1.8), C_METAL),
+          ("BTN_BOOT", box(ox + ESP_W - 5.5, oy + 2.5, z + t, 4.0, 3.0, 1.8), C_METAL),
+          ("USB_UART", box(ox + (ESP_W - 5) / 2, oy + 12.0, z + t, 5.0, 5.0, 1.2), C_BLACK),
+          ("LDO", box(ox + (ESP_W - 6.5) / 2, oy + 19.0, z + t, 6.5, 3.5, 1.6), C_BLACK)]
+    return p
+
+
+def parts_logic(sx, sy, holes):
+    """Макетка 7x9: SN65HVD230, преобразователь уровней, L9637D, 510 Ом, ESP32."""
+    t = PCB_T
+    p = [("PCB", pcb_with_holes(sx, sy, holes), C_PERF),
+         # SN65HVD230 (CJMCU-230), ближе к плате питания — CAN 6/14 оттуда
+         ("SN65HVD230", box(5.0, 6.0, t, 22.0, 16.0, PCB_T), C_PCB_BLUE),
+         ("SN65_pins", box(5.0, 6.0, t + PCB_T, 2.54, 15.24, 8.5), C_BLACK),
+         ("SN65_chip", box(14.0, 11.0, t + PCB_T, 5.0, 4.0, 1.7), C_BLACK),
+         # преобразователь уровней 8 каналов на штырях
+         ("Level8", box(33.0, 8.0, t + 2.5, 22.0, 16.0, PCB_T), C_PCB_RED),
+         ("Level8_pins", box(33.0, 8.0, t, 22.0, 16.0, 2.5), C_BLACK),
+         ("Level8_chip", box(40.0, 13.0, t + 2.5 + PCB_T, 8.0, 5.0, 1.2), C_BLACK),
+         # L9637D на переходнике SOP8 -> DIP8
+         ("L9637D_adapter", box(30.0, 40.0, t + 2.5, 11.0, 13.0, PCB_T), C_PCB_GREEN),
+         ("L9637D_pins", box(30.5, 41.0, t, 10.0, 11.0, 2.5), C_BLACK),
+         ("L9637D", box(33.0, 44.0, t + 2.5 + PCB_T, 5.0, 4.0, 1.75), C_BLACK),
+         # 510 Ом 1 Вт (подтяжка K-line), лёжа
+         ("R510_1W", cyl(8.0, 47.0, t + 2.5, 4.0, 12.0, (1, 0, 0)), C_RES),
+         ("C100n", box(24.0, 30.0, t, 4.0, 2.5, 5.0), C_CAP)]
+    p += parts_esp32(ESP_X - A_X, ESP_Y - A_Y, t)
+    return p
+
+
+def parts_powerdiv(sx, sy, holes):
+    """Макетка 5x7: клеммы OBD, защита питания, 6 делителей."""
+    t = PCB_T
+    p = [("PCB", pcb_with_holes(sx, sy, holes), C_PERF)]
+    for i in range(3):  # 3 клеммника KF301-3P, вход проводов — к гермовводу (влево)
+        p.append(("KF301_%d" % (i + 1), box(1.0, 12.0 + i * 15.0, t, 7.5, 15.0, 10.0), C_TERM))
+    for i in range(6):  # делители 100k/22k + 10 нФ стоя
+        x = 16.0 + i * 5.0
+        p.append(("R%d_100k" % (i + 1), cyl(x, 8.0, t, 2.4, 6.5), C_RES))
+        p.append(("R%d_22k" % (i + 1), cyl(x, 16.0, t, 2.4, 6.5), C_RES))
+        p.append(("C%d_10n" % (i + 1), box(x - 2.0, 21.5, t, 4.0, 2.5, 5.0), C_CAP))
+    p += [("SS34", box(20.0, 52.0, t, 7.0, 6.0, 2.3), C_BLACK),
+          ("SMBJ24A", box(31.0, 52.0, t, 5.5, 4.0, 2.3), C_BLACK),
+          ("C100u_50V", cyl(17.0, 62.0, t + 5.0, 10.0, 20.0, (1, 0, 0)), C_PCB_BLUE),
+          ("C100n", box(40.0, 52.0, t, 4.0, 2.5, 5.0), C_CAP)]
+    return p
+
+
+def parts_buck(sx, sy, holes):
+    """LM2596, повёрнут: вход снизу (к плате питания), выход сверху."""
+    t = PCB_T
+    return [("PCB", pcb_with_holes(sx, sy, holes), C_PCB_BLUE),
+            ("Cap_in", cyl(10.5, 7.5, t, 8.0, 10.0), C_BLACK),
+            ("Cap_out", cyl(10.5, 35.5, t, 8.0, 10.0), C_BLACK),
+            ("Inductor", box(4.5, 15.0, t, 12.0, 12.0, 7.0), C_BLACK),
+            ("LM2596", box(13.5, 28.5, t, 6.0, 10.0, 4.5), C_BLACK),
+            ("Trimmer", box(15.0, 3.0, t, 4.5, 9.5, 10.0), C_TERM)]
+
+
+def parts_relay4(sx, sy, holes):
+    """Модуль 4 реле: клеммы к передней стороне (к макеткам), входы IN1–IN4 слева."""
+    t = PCB_T
+    p = [("PCB", pcb_with_holes(sx, sy, holes), C_PCB_BLUE),
+         ("Pins_IN", box(1.5, 18.0, t, 2.54, 15.24, 8.5), C_BLACK),
+         ("JD_VCC", box(1.5, 38.0, t, 2.54, 7.62, 8.5), C_BLACK)]
+    for i in range(4):
+        x = RELAY_LED_X0 - 7.75 + i * RELAY_PITCH
+        p += [("K%d_SRD05" % (i + 1), box(x, 14.0, t, 15.5, 19.0, 15.5), C_RELAY),
+              ("K%d_term" % (i + 1), box(x, 1.0, t, 15.0, 7.5, 10.0), C_TERM),
+              ("K%d_opto" % (i + 1), box(x + 4.0, 38.0, t, 4.5, 6.5, 3.0), C_BLACK),
+              ("K%d_LED" % (i + 1), cyl(RELAY_LED_X0 + i * RELAY_PITCH, RELAY_LED_Y - ROW2_Y, t, 3.0, 3.0),
+               (0.9, 0.1, 0.1))]
+    return p
+
+
+BOARD_PARTS = {"PowerDiv": parts_powerdiv, "Logic": parts_logic, "Buck": parts_buck,
+               "Relay4": parts_relay4}
+
+
+def make_fuse_model():
+    cx = FUSE_X + FUSE_D / 2 + 1.5
+    zc = FLOOR + FUSE_D / 2 + 1.0
+    y0 = ROW2_Y + 6.0 - 2.0
+    return cyl(cx, y0, zc, FUSE_D - 0.5, FUSE_LEN, (0, 1, 0))
+
+
+def make_boards(doc):
+    """Платы на стойках: группа на каждую плату, в ней — компоненты."""
+    grp = doc.addObject("App::DocumentObjectGroup", "Boards")
+    objs = []
+    for name, bx, by, sx, sy, holes in BOARDS:
+        g = doc.addObject("App::DocumentObjectGroup", "Board_" + name)
+        grp.addObject(g)
+        for part, shape, color in BOARD_PARTS[name](sx, sy, holes):
+            shape.translate(V(bx, by, FLOOR + POST_H))
+            o = doc.addObject("Part::Feature", name + "_" + part)
+            o.Shape = shape
+            g.addObject(o)
+            objs.append((o, color))
+    o = doc.addObject("Part::Feature", "Fuse_5x20_holder")
+    o.Shape = make_fuse_model()
+    grp.addObject(o)
+    objs.append((o, C_BLACK))
+    return objs
+
+
+def antenna_keepout():
+    """Зона перед антенной ESP32 (до задней стенки), где не должно быть металла."""
+    x0 = ESP_X - 3.0
+    y0 = ESP_Y + ESP_L - 7.0
+    return box(x0, y0, FLOOR, ESP_W + 6.0, W - WALL - y0, H_BASE - FLOOR)
+
+
+def build(doc):
+    base = doc.addObject("Part::Feature", "Base")
+    base.Shape = make_base()
+    lid = doc.addObject("Part::Feature", "Lid")
+    lid.Shape = make_lid()
+    boards = make_boards(doc) if SHOW_BOARDS else []
+    keep = doc.addObject("Part::Feature", "Antenna_keepout")
+    keep.Shape = antenna_keepout()
+    doc.recompute()
+    if App.GuiUp:
+        base.ViewObject.ShapeColor = (0.25, 0.25, 0.28)
+        base.ViewObject.Transparency = 40
+        lid.ViewObject.ShapeColor = (0.35, 0.35, 0.40)
+        lid.ViewObject.Transparency = 75
+        keep.ViewObject.ShapeColor = (0.2, 0.8, 0.2)
+        keep.ViewObject.Transparency = 85
+        for o, color in boards:
+            o.ViewObject.ShapeColor = color
+    return base, lid, boards, keep
+
+
+def check(boards, base):
+    """Проверка: платы не задевают стенки, бобышки и друг друга; всё ниже бортика крышки."""
+    msgs = []
+    top_free = H_BASE - LIP_H
+    shapes = [(o.Name, o.Shape) for o, _ in boards]
+    for name, s in shapes:
+        if s.BoundBox.ZMax > top_free - 1.0:
+            msgs.append("%s: верх %.1f мм, бортик крышки с %.1f" % (name, s.BoundBox.ZMax, top_free))
+        if s.common(base.Shape).Volume > 0.5:
+            msgs.append("%s задевает корпус" % name)
+    keep = antenna_keepout()
+    for name, s in shapes:
+        if not name.startswith("Logic") and s.common(keep).Volume > 0.5:
+            msgs.append("%s в зоне антенны ESP32" % name)
+    groups = {}
+    for name, s in shapes:
+        groups.setdefault(name.split("_")[0], []).append(s)
+    keys = sorted(groups)
+    for i, a in enumerate(keys):
+        for b in keys[i + 1:]:
+            for sa in groups[a]:
+                if any(sa.common(sb).Volume > 0.5 for sb in groups[b]):
+                    msgs.append("%s пересекается с %s" % (a, b))
+                    break
+    return msgs
+
+
+def draw_layout(boards, base, keep, path):
+    """Вид сверху и спереди с подписями (нужен matplotlib)."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Rectangle, Circle
+
+    fig, (ax, ax2) = plt.subplots(2, 1, figsize=(11, 12.5),
+                                  gridspec_kw={"height_ratios": [W + 30, H_BASE + LID_T + 25]})
+    ax.add_patch(Rectangle((0, 0), L, W, fc="#e9e9ec", ec="#333", lw=1.5))
+    ax.add_patch(Rectangle((WALL, WALL), L - 2 * WALL, W - 2 * WALL, fc="#fafafa", ec="#999"))
+    bb = keep.Shape.BoundBox
+    ax.add_patch(Rectangle((bb.XMin, bb.YMin), bb.XLength, bb.YLength, fc="#c8f0c8", ec="#2e7d32",
+                           ls="--", alpha=0.6))
+    ax.text(bb.Center.x, bb.YMax - 6, "зона антенны:\nбез металла\nи проводов", ha="center",
+            va="top", fontsize=8, color="#2e7d32")
+    for cx, cy in boss_centers():
+        ax.add_patch(Circle((cx, cy), BOSS_D / 2, fc="#bbb", ec="#555"))
+    order = sorted(boards, key=lambda oc: oc[0].Shape.BoundBox.ZMin)
+    for o, color in order:
+        b = o.Shape.BoundBox
+        ax.add_patch(Rectangle((b.XMin, b.YMin), b.XLength, b.YLength, fc=color, ec="#222",
+                               lw=0.4, alpha=0.9))
+    for _, bx, by, _, _, holes in BOARDS:
+        for hx, hy in holes:
+            ax.add_patch(Circle((bx + hx, by + hy), POST_D / 2, fc="none", ec="#d00", lw=0.8))
+    for x, y, d in LID_HOLES:
+        ax.add_patch(Circle((x, y), d / 2 + 0.8, fc="none", ec="#ff6f00", lw=1.2))
+    notes = [
+        (B_X + PERF_B[0] / 2, B_Y + 38, "плата питания\nи делителей\n5x7"),
+        (A_X + 22, A_Y + 30, "плата логики 7x9"),
+        (ESP_X + ESP_W / 2, ESP_Y + 30, "ESP32\nDevKit"),
+        (BUCK_X + LM2596[1] / 2, ROW2_Y + 30, "LM2596"),
+        (FUSE_X + 8, ROW2_Y + 40, "пред.\n1 А"),
+        (RELAY_X + RELAY4[0] / 2, ROW2_Y + 26, "модуль 4 реле"),
+        (A_X + 16, A_Y + 14, "SN65HVD230"),
+        (A_X + 44, A_Y + 27, "ур. 3,3/5 В"),
+        (A_X + 36, A_Y + 56, "L9637D"),
+    ]
+    for x, y, t in notes:
+        ax.text(x, y, t, ha="center", va="center", fontsize=8.5, weight="bold",
+                bbox=dict(fc="white", ec="none", alpha=0.75, pad=1.5))
+    for wall, kind, pos, zc, size in HOLES:
+        if wall == "left":
+            ax.annotate("гермоввод PG9\n(кабель OBD)", (0, pos), (-30, pos - 24), fontsize=8.5,
+                        arrowprops=dict(arrowstyle="->"))
+        if wall == "front":
+            ax.annotate("окно USB-C", (pos, 0), (pos - 30, -18), fontsize=8.5,
+                        arrowprops=dict(arrowstyle="->"))
+    ax.text(L / 2, -22, "передняя стенка", ha="center", fontsize=9, color="#555")
+    ax.set_xlim(-38, L + 18)
+    ax.set_ylim(-28, W + 6)
+    ax.set_aspect("equal")
+    ax.set_title("Корпус блока на ESP32: %g x %g x %g мм (вид сверху, крышка снята)"
+                 % (L, W, H_BASE + LID_T), fontsize=11)
+    ax.set_xlabel("мм")
+    # вид спереди (разрез по передней стенке убран)
+    ax2.add_patch(Rectangle((0, 0), L, H_BASE, fc="#e9e9ec", ec="#333", lw=1.2))
+    ax2.add_patch(Rectangle((0, H_BASE), L, LID_T, fc="#cfcfd6", ec="#333", lw=1.0))
+    for o, color in order:
+        b = o.Shape.BoundBox
+        ax2.add_patch(Rectangle((b.XMin, b.ZMin), b.XLength, b.ZLength, fc=color, ec="#222",
+                                lw=0.3, alpha=0.85))
+    for wall, pos, zc, (w, h) in VENT:
+        if wall == "front":
+            ax2.add_patch(Rectangle((pos - w / 2, zc - h / 2), w, h, fc="white", ec="#333", lw=0.6))
+    for wall, kind, pos, zc, size in HOLES:
+        if wall == "front":
+            w, h = size
+            ax2.add_patch(Rectangle((pos - w / 2, zc - h / 2), w, h, fc="none", ec="#d00", lw=1.2))
+    ax2.axhline(H_BASE - LIP_H, color="#ff6f00", lw=0.8, ls="--")
+    ax2.text(2, H_BASE - LIP_H + 0.8, "низ бортика крышки", fontsize=7.5, color="#ff6f00")
+    ax2.set_xlim(-38, L + 18)
+    ax2.set_ylim(-4, H_BASE + LID_T + 8)
+    ax2.set_aspect("equal")
+    ax2.set_title("Вид спереди: окно USB-C и пазы вентиляции", fontsize=10)
+    fig.tight_layout()
+    fig.savefig(path, dpi=110)
+
+
+def export(base, lid, folder):
+    import Mesh
+    printable = lid.Shape.copy()
+    printable.rotate(V(L / 2, W / 2, H_BASE), V(1, 0, 0), 180)
+    printable.translate(V(0, 0, -printable.BoundBox.ZMin))
+    for name, shape in (("esp32_case_base", base.Shape), ("esp32_case_lid", printable)):
+        shape.exportStep(os.path.join(folder, name + ".step"))
+        mesh = Mesh.Mesh(shape.tessellate(0.05))
+        mesh.write(os.path.join(folder, name + ".stl"))
+
+
+doc = App.newDocument("ESP32_Block_Case")
+base, lid, boards, keep = build(doc)
+for m in check(boards, base):
+    App.Console.PrintWarning("Компоновка: " + m + "\n")
+folder = EXPORT_DIR
+if folder is None and not App.GuiUp:
+    try:
+        folder = os.path.dirname(os.path.abspath(__file__))
+    except NameError:
+        folder = os.getcwd()
+if folder:
+    export(base, lid, folder)
+    doc.saveAs(os.path.join(folder, "esp32_block_case.FCStd"))
+    try:
+        draw_layout(boards, base, keep, os.path.join(folder, "layout.png"))
+    except ImportError:
+        App.Console.PrintMessage("matplotlib нет — layout.png не нарисован\n")
+if App.GuiUp:
+    import FreeCADGui as Gui
+    Gui.SendMsgToActiveView("ViewFit")
+    Gui.activeDocument().activeView().viewIsometric()
