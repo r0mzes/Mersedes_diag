@@ -1,0 +1,152 @@
+# -*- coding: utf-8 -*-
+# Платы блока vito_diag на ESP32: где стоит каждая деталь на макетках и как идут соединения.
+# Описание плат, деталей и разводка — в esp32_boards.py (лежит рядом, макрос его подключает).
+#
+# Запуск в FreeCAD: Макросы → Макросы… → выбрать этот файл → Выполнить. Создаётся документ
+# «ESP32_Block_Boards»:
+#   Board_B — плата питания и делителей (макетка 5x7), слева, как в корпусе;
+#   Board_A — плата логики (макетка 7x9) с ESP32;
+#   в каждой: детали сверху, дорожки (голый лужёный провод) и провода МГТФ — снизу, выводы
+#   окрашены по цепи (цвета — как на board_*_top.png).
+# Без GUI: freecadcmd esp32_block_boards.FCMacro — рядом пишутся esp32_block_boards.FCStd
+# и чертежи board_logic_top/solder.png, board_power_top/solder.png.
+#
+# Платы в корпусе: esp32_block_case.FCMacro берёт модели отсюда же.
+
+import os
+import sys
+import importlib
+import FreeCAD as App
+
+SHOW_GRID = True     # тёмные точки отверстий (720 + 432 шт., выключить, если медленно)
+SHOW_WIRING = True   # дорожки и провода со стороны пайки
+LABELS = True        # подписи позиций (U1, R3…) на деталях, нужен шрифт
+GAP = 12.0           # промежуток между платами на виде (в корпусе — 9 мм)
+EXPORT_DIR = None    # None — в GUI не сохранять; без GUI — папка макроса
+
+
+def here():
+    try:
+        return os.path.dirname(os.path.abspath(__file__))
+    except NameError:
+        pass
+    for p in sys.path:
+        if os.path.exists(os.path.join(p, "esp32_boards.py")):
+            return p
+    return os.getcwd()
+
+
+HERE = here()
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+import esp32_boards as eb
+importlib.reload(eb)
+
+
+def font():
+    cands = [os.path.join(App.getResourceDir(), "Mod", "TechDraw", "Resources", "fonts",
+                          "osifont-lgpl3fe.ttf"),
+             r"C:\Windows\Fonts\arialbd.ttf", r"C:\Windows\Fonts\arial.ttf",
+             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"]
+    for f in cands:
+        if os.path.exists(f):
+            return f
+    return None
+
+
+def label_shape(text, size, fnt):
+    import Part
+    try:
+        wires = Part.makeWireString(text, fnt, size, 0)
+        faces = []
+        for ch in wires:
+            for w in ch:
+                if w.isClosed():
+                    faces.append(Part.Face(w))
+        if not faces:
+            return None
+        # буквы с дырками (о, 8…): вычитаем внутренние контуры
+        faces.sort(key=lambda f: -f.Area)
+        res = None
+        for f in faces:
+            if res is None:
+                res = f
+            elif res.common(f).Area > 0.99 * f.Area:
+                res = res.cut(f)
+            else:
+                res = res.fuse(f)
+        return res.extrude(App.Vector(0, 0, 0.3))
+    except Exception:
+        return None
+
+
+def build(doc):
+    bs = eb.boards(os.path.join(HERE, "esp32_boards_wiring.json"))
+    bA, bB = bs
+    offsets = {"B": (0.0, 0.0), "A": (bB.sx + GAP, 0.0)}
+    fnt = font() if LABELS else None
+    objs = []
+    for b in (bB, bA):
+        ox, oy = offsets[b.key]
+        grp = doc.addObject("App::DocumentObjectGroup", "Board_" + b.key)
+        grp.Label = ("Board_A_logika_7x9" if b.key == "A" else "Board_B_pitanie_5x7")
+        parts_top = {}
+        for name, shape, color in eb.shapes(b, holes=SHOW_GRID, wiring=SHOW_WIRING):
+            shape.translate(App.Vector(ox, oy, 0))
+            o = doc.addObject("Part::Feature", b.key + "_" + name)
+            o.Shape = shape
+            grp.addObject(o)
+            objs.append((o, color))
+            ref = name.split("_")[0]
+            if ref and ref[0] in "UDRCJX" and ref[1:].isdigit():
+                bb = shape.BoundBox
+                cur = parts_top.get(ref)
+                parts_top[ref] = bb if cur is None else cur.united(bb)
+        if fnt:
+            lg = doc.addObject("App::DocumentObjectGroup", "Labels_" + b.key)
+            grp.addObject(lg)
+            for ref, bb in parts_top.items():
+                if ref.startswith("X"):
+                    continue
+                size = 2.2 if ref.startswith(("U", "J")) else 1.6
+                s = label_shape(ref, size, fnt)
+                if s is None:
+                    continue
+                sb = s.BoundBox
+                s.translate(App.Vector(bb.Center.x - sb.Center.x, bb.Center.y - sb.Center.y,
+                                       bb.ZMax + 0.05))
+                o = doc.addObject("Part::Feature", "Label_%s_%s" % (b.key, ref))
+                o.Shape = s
+                lg.addObject(o)
+                objs.append((o, (1.0, 1.0, 1.0)))
+        for m in eb.check(b):
+            App.Console.PrintWarning("Плата %s: %s\n" % (b.key, m))
+        nt = sum(1 for w in b.wires if w[1] == "trace")
+        nw = sum(1 for w in b.wires if w[1] == "wire")
+        App.Console.PrintMessage("Плата %s: %d дорожек, %d проводов МГТФ\n" % (b.key, nt, nw))
+        print("Плата %s: %d дорожек, %d проводов МГТФ, замечаний: %d" % (b.key, nt, nw, len(eb.check(b))))
+    doc.recompute()
+    if App.GuiUp:
+        for o, color in objs:
+            o.ViewObject.ShapeColor = color
+    return bs
+
+
+doc = App.newDocument("ESP32_Block_Boards")
+boards = build(doc)
+folder = EXPORT_DIR
+if folder is None and not App.GuiUp:
+    folder = HERE
+if folder:
+    doc.saveAs(os.path.join(folder, "esp32_block_boards.FCStd"))
+    try:
+        for b in boards:
+            name = "board_logic" if b.key == "A" else "board_power"
+            eb.draw(b, os.path.join(folder, name + "_top.png"))
+            eb.draw(b, os.path.join(folder, name + "_solder.png"), solder_side=True)
+    except ImportError:
+        App.Console.PrintMessage("matplotlib нет — чертежи не нарисованы\n")
+if App.GuiUp:
+    import FreeCADGui as Gui
+    Gui.SendMsgToActiveView("ViewFit")
+    Gui.activeDocument().activeView().viewIsometric()
