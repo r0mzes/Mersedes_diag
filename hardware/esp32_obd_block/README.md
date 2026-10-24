@@ -1,6 +1,6 @@
 # Блок vito_diag на ESP32: схема и спецификация (шаг 2)
 
-Схема: [schematic.svg](schematic.svg) (картинка — [schematic.png](schematic.png)), список для заказа —
+Схема: [schematic.svg](schematic.svg) (картинка — [schematic.png](schematic.png)), монтажная схема с видом деталей — [wiring.png](wiring.png) (рисует `draw_wiring.py`), список для заказа —
 [bom.csv](bom.csv). Блок заменяет Uno + реле + ELM327: K-line делает микросхема L9637D, CAN —
 SN65HVD230, Wi-Fi и приборка — ESP32 (прошивка `firmware/esp32_obd_panel`, docs/ESP32_PANEL.md).
 Только чтение.
