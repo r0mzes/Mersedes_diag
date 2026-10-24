@@ -1,0 +1,193 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 1000" width="1500" height="1000" font-family="Segoe UI, Arial, sans-serif" font-size="13">
+  <defs>
+    <marker id="dot" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6"><circle cx="5" cy="5" r="4" fill="#222"/></marker>
+  </defs>
+  <style>
+    .box { fill: #fff; stroke: #222; stroke-width: 1.6; }
+    .chip { fill: #f3f6fb; stroke: #1f3b73; stroke-width: 1.8; }
+    .mod { fill: #f6f8f2; stroke: #4a6b1f; stroke-width: 1.6; }
+    .t { fill: #111; }
+    .h { fill: #111; font-weight: 700; font-size: 15px; }
+    .s { fill: #555; font-size: 11.5px; }
+    .net { fill: #b3261e; font-weight: 600; font-size: 12px; }
+    .w12 { stroke: #c62828; stroke-width: 2.2; fill: none; }
+    .w5 { stroke: #ef6c00; stroke-width: 2.2; fill: none; }
+    .w3 { stroke: #8e24aa; stroke-width: 2.2; fill: none; }
+    .wg { stroke: #222; stroke-width: 1.8; fill: none; }
+    .wk { stroke: #1565c0; stroke-width: 2.2; fill: none; }
+    .wc { stroke: #2e7d32; stroke-width: 2.2; fill: none; }
+    .wa { stroke: #6d4c41; stroke-width: 1.6; fill: none; stroke-dasharray: 5 3; }
+  </style>
+  <rect width="1500" height="1000" fill="#fff"/>
+  <text x="20" y="30" class="h" font-size="20">Блок vito_diag на ESP32 — шаг 2 (K-line на L9637D, CAN, реле, замеры, питание от OBD)</text>
+  <text x="20" y="50" class="s">Только чтение. Цвета проводов: красный +12 В (после защиты), оранжевый +5 В, фиолетовый +3,3 В, чёрный — масса, синий — K-line, зелёный — CAN, коричневый пунктир — к АЦП. Названия цепей (красным) соединяются по имени.</text>
+
+  <!-- OBD -->
+  <rect x="20" y="80" width="170" height="420" class="box" rx="6"/>
+  <text x="105" y="102" text-anchor="middle" class="h">Вилка OBD-II</text>
+  <text x="105" y="118" text-anchor="middle" class="s">(в машину)</text>
+  <g class="t">
+    <text x="35" y="150">16  +12 В АКБ</text>
+    <text x="35" y="190">4   масса кузова</text>
+    <text x="35" y="210">5   сигнальная масса</text>
+    <text x="35" y="260">7   K-line</text>
+    <text x="35" y="290">8   (линия Mercedes)</text>
+    <text x="35" y="320">9   (линия Mercedes)</text>
+    <text x="35" y="350">11  (линия Mercedes)</text>
+    <text x="35" y="420">6   CAN-H</text>
+    <text x="35" y="450">14  CAN-L</text>
+  </g>
+
+  <!-- Питание -->
+  <path d="M190 146 H240" class="w12"/>
+  <rect x="240" y="132" width="70" height="28" class="box" rx="4"/>
+  <text x="275" y="151" text-anchor="middle">F1 1 А</text>
+  <path d="M310 146 H360" class="w12"/>
+  <circle cx="360" cy="146" r="3.5" fill="#222"/>
+  <path d="M360 146 V170" class="w12"/>
+  <rect x="340" y="170" width="40" height="36" class="box" rx="4"/>
+  <text x="360" y="193" text-anchor="middle" font-size="11">TVS</text>
+  <text x="392" y="186" class="s">D2 SMBJ24A</text>
+  <text x="392" y="200" class="s">катод к +12</text>
+  <path d="M360 206 V228" class="wg"/><text x="352" y="242" class="s">⏚</text>
+  <path d="M360 146 H420" class="w12"/>
+  <rect x="420" y="132" width="80" height="28" class="box" rx="4"/>
+  <text x="460" y="151" text-anchor="middle">D1 SS34 ▶</text>
+  <path d="M500 146 H560" class="w12"/>
+  <circle cx="560" cy="146" r="3.5" fill="#222"/>
+  <text x="520" y="136" class="net">VBAT_P</text>
+  <path d="M560 146 V170" class="w12"/>
+  <rect x="540" y="170" width="40" height="34" class="box" rx="4"/>
+  <text x="560" y="192" text-anchor="middle" font-size="11">C1</text>
+  <text x="588" y="186" class="s">100 мкФ 50 В</text>
+  <text x="588" y="200" class="s">+ 100 нФ</text>
+  <path d="M560 204 V228" class="wg"/><text x="552" y="242" class="s">⏚</text>
+  <path d="M560 146 H690" class="w12"/>
+  <rect x="690" y="110" width="170" height="80" class="mod" rx="6"/>
+  <text x="775" y="136" text-anchor="middle" class="h">LM2596 (модуль)</text>
+  <text x="775" y="154" text-anchor="middle" class="s">вход до 40 В → выставить 5,0 В</text>
+  <text x="700" y="178" class="s">IN+ / IN− (⏚)</text>
+  <text x="790" y="178" class="s">OUT+ / OUT−</text>
+  <path d="M860 146 H930" class="w5"/>
+  <circle cx="930" cy="146" r="3.5" fill="#222"/>
+  <text x="900" y="136" class="net">+5V</text>
+  <text x="940" y="140" class="s">→ ESP32 VIN, L9637D VCC, преобразователь уровней HV, реле JD-VCC</text>
+  <path d="M190 186 H230 V206 H190" class="wg"/>
+  <text x="196" y="252" class="s">4 и 5 → общая масса ⏚</text>
+
+  <!-- Реле -->
+  <rect x="250" y="260" width="300" height="230" class="mod" rx="6"/>
+  <text x="400" y="282" text-anchor="middle" class="h">Реле линий (модуль 5 В, 3 канала)</text>
+  <g class="t">
+    <text x="265" y="310">R1 (IN1 ← GPIO25):</text>
+    <text x="285" y="328" class="s">NC ← OBD 7 · NO ← OBD 8 · COM → X</text>
+    <text x="265" y="356">R2 (IN2 ← GPIO26):</text>
+    <text x="285" y="374" class="s">NC ← OBD 9 · NO ← OBD 11 · COM → Y</text>
+    <text x="265" y="402">R3 (IN3 ← GPIO27):</text>
+    <text x="285" y="420" class="s">NC ← X · NO ← Y · COM → K_SEL</text>
+    <text x="265" y="448" class="s">Без питания все отпущены: OBD 7 → K_SEL.</text>
+    <text x="265" y="466" class="s">VCC (оптроны) ← +3V3, JD-VCC (катушки) ← +5V,</text>
+    <text x="265" y="482" class="s">перемычку JD-VCC–VCC снять. Вход активен «0».</text>
+  </g>
+  <path d="M190 256 H250" class="wk"/>
+  <path d="M190 286 H250" class="wk"/>
+  <path d="M190 316 H250" class="wk"/>
+  <path d="M190 346 H250" class="wk"/>
+  <path d="M550 410 H640" class="wk"/>
+  <text x="560" y="402" class="net">K_SEL</text>
+
+  <!-- L9637D -->
+  <rect x="640" y="300" width="190" height="220" class="chip" rx="4"/>
+  <text x="735" y="322" text-anchor="middle" class="h">U1 L9637D (SO-8)</text>
+  <text x="735" y="338" text-anchor="middle" class="s">драйвер K-line ISO 9141 / 14230</text>
+  <g class="t" font-size="12.5">
+    <text x="650" y="370">7 VS ← VBAT_P</text>
+    <text x="650" y="414">6 K ↔ K_SEL</text>
+    <text x="650" y="458">5 GND → ⏚</text>
+    <text x="650" y="494" class="s">8 LI, 2 LO — не нужны (сверить</text>
+    <text x="650" y="506" class="s">подключение с даташитом)</text>
+    <text x="745" y="370" text-anchor="start">3 VCC ← +5V</text>
+    <text x="745" y="414">4 TX ←</text>
+    <text x="745" y="446">1 RX →</text>
+  </g>
+  <path d="M600 366 H640" class="w12"/><text x="566" y="360" class="net" font-size="11">VBAT_P</text>
+  <!-- 510 Ом -->
+  <path d="M612 366 V376" class="w12"/>
+  <rect x="603" y="376" width="18" height="28" class="box" rx="2"/>
+  <path d="M612 404 V410" class="wk"/><circle cx="612" cy="410" r="3.5" fill="#222"/>
+  <text x="556" y="430" class="s">R1</text><text x="556" y="444" class="s">510 Ом</text><text x="556" y="458" class="s">1 Вт</text>
+  <text x="650" y="540" class="s">C 100 нФ у VS и у VCC на массу</text>
+
+  <!-- Преобразователь уровней -->
+  <rect x="890" y="370" width="200" height="110" class="mod" rx="6"/>
+  <text x="990" y="392" text-anchor="middle" class="h">Преобразователь</text>
+  <text x="990" y="408" text-anchor="middle" class="s">уровней BSS138, 4 канала</text>
+  <g class="s">
+    <text x="898" y="430">HV ← +5V</text><text x="990" y="430">LV ← +3V3</text>
+    <text x="898" y="450">HV1 → TX U1</text><text x="990" y="450">LV1 ← GPIO17</text>
+    <text x="898" y="470">HV2 ← RX U1</text><text x="990" y="470">LV2 → GPIO16</text>
+  </g>
+  <path d="M830 410 H860 V446 H890" class="wk"/>
+  <path d="M830 442 H850 V466 H890" class="wk"/>
+
+  <!-- CAN -->
+  <rect x="640" y="600" width="190" height="120" class="mod" rx="6"/>
+  <text x="735" y="622" text-anchor="middle" class="h">SN65HVD230 (модуль)</text>
+  <g class="s">
+    <text x="650" y="646">3V3 ← +3V3, GND → ⏚</text>
+    <text x="650" y="666">CTX ← GPIO14, CRX → GPIO15</text>
+    <text x="650" y="686">CANH ↔ OBD 6, CANL ↔ OBD 14</text>
+    <text x="650" y="708" fill="#b3261e">снять резистор 120 Ом (R2, «121»)!</text>
+  </g>
+  <path d="M190 416 H220 V680 H640" class="wc"/>
+  <path d="M190 446 H210 V696 H640" class="wc"/>
+  <text x="230" y="674" class="s">витая пара, коротко</text>
+
+  <!-- Делители -->
+  <rect x="250" y="760" width="580" height="200" class="box" rx="6"/>
+  <text x="540" y="782" text-anchor="middle" class="h">Замер напряжений: 6 делителей 100 кОм / 22 кОм + 10 нФ (16 В → 2,9 В)</text>
+  <g class="s">
+    <text x="265" y="808">Каждый делитель: точка машины → резистор 100 кОм → вход АЦП ESP32;</text>
+    <text x="265" y="826">от входа АЦП на массу ⏚ — резистор 22 кОм и конденсатор 10 нФ (параллельно).</text>
+    <text x="265" y="852">OBD 16 (после F1) → GPIO32  ·  OBD 7 → GPIO33  ·  OBD 8 → GPIO34</text>
+    <text x="265" y="872">OBD 9 → GPIO35  ·  OBD 11 → GPIO36 (VP)  ·  OBD 6 → GPIO39 (VN)</text>
+    <text x="265" y="914">Только АЦП1 (GPIO32–39): АЦП2 при включённом Wi-Fi не работает.</text>
+    <text x="265" y="934">По желанию: BAT54S на каждом входе (к +3V3 и ⏚) — защита от бросков.</text>
+  </g>
+  <path d="M190 146 H200 V848 H250" class="wa"/>
+  <path d="M190 260 H205 V868 H250" class="wa"/>
+
+  <!-- ESP32 -->
+  <rect x="1120" y="250" width="340" height="560" class="chip" rx="8"/>
+  <text x="1290" y="276" text-anchor="middle" class="h">ESP32 DevKit (WROOM-32)</text>
+  <g class="t" font-size="12.5">
+    <text x="1132" y="310">VIN (5V) ← +5V          GND → ⏚</text>
+    <text x="1132" y="332">3V3 → +3V3 (≤ 200 мА: SN65, оптроны реле, LV)</text>
+    <text x="1132" y="372" fill="#1565c0">GPIO17 (UART2 TX) → LV1 → TX L9637D</text>
+    <text x="1132" y="394" fill="#1565c0">GPIO16 (UART2 RX) ← LV2 ← RX L9637D</text>
+    <text x="1132" y="430" fill="#2e7d32">GPIO14 (TWAI TX) → CTX SN65HVD230</text>
+    <text x="1132" y="452" fill="#2e7d32">GPIO15 (TWAI RX) ← CRX SN65HVD230</text>
+    <text x="1132" y="490">GPIO25 → IN1 реле (R1: 7 / 8)</text>
+    <text x="1132" y="512">GPIO26 → IN2 реле (R2: 9 / 11)</text>
+    <text x="1132" y="534">GPIO27 → IN3 реле (R3: X / Y)</text>
+    <text x="1132" y="572" fill="#6d4c41">GPIO32 ← делитель OBD 16</text>
+    <text x="1132" y="594" fill="#6d4c41">GPIO33 ← делитель OBD 7</text>
+    <text x="1132" y="616" fill="#6d4c41">GPIO34 ← делитель OBD 8</text>
+    <text x="1132" y="638" fill="#6d4c41">GPIO35 ← делитель OBD 9</text>
+    <text x="1132" y="660" fill="#6d4c41">GPIO36 (VP) ← делитель OBD 11</text>
+    <text x="1132" y="682" fill="#6d4c41">GPIO39 (VN) ← делитель OBD 6</text>
+    <text x="1132" y="720" class="s">GPIO2 — светодиод на плате (состояние связи)</text>
+    <text x="1132" y="740" class="s">Wi-Fi «vito_diag» → телефон, http://192.168.4.1</text>
+    <text x="1132" y="760" class="s">USB — прошивка и служебные команды (~STATE …)</text>
+    <text x="1132" y="790" class="s">Реле: в setup() сразу HIGH на 25/26/27 (вход «0» = вкл.)</text>
+  </g>
+  <path d="M1090 450 H1100 V368 H1120" class="wk"/>
+  <path d="M1090 470 H1106 V390 H1120" class="wk"/>
+  <path d="M830 666 H1110 V426 H1120" class="wc"/>
+  <path d="M830 682 H1114 V448 H1120" class="wc"/>
+
+  <text x="860" y="860" class="s">Плата: макетка 7×9 см; L9637D — на переходнике SOIC-8 → DIP-8.</text>
+  <text x="860" y="878" class="s">Все массы (4, 5, минусы модулей, GND ESP32) — в одну точку.</text>
+  <text x="860" y="896" class="s">Перед первым включением в машину: проверить 5,0 В на выходе</text>
+  <text x="860" y="914" class="s">LM2596 от лабораторного блока, без ESP32.</text>
+</svg>
