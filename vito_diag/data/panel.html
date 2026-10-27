@@ -108,9 +108,10 @@ function tilesWanted() {
   const saved = store("tiles_" + state.profile);
   if (saved) { try { chosen = JSON.parse(saved); return chosen; } catch (e) {} }
   const all = Object.keys(state.values);
-  chosen = state.default_tiles.filter(n => all.includes(n));
-  if (!chosen.length) chosen = all.slice(0, 8);
-  return chosen;
+  let pick = state.default_tiles.filter(n => all.includes(n));
+  if (!pick.length) pick = all.slice(0, 8);
+  if (all.length) chosen = pick;  // пока замеров нет — не запоминаем пустой выбор
+  return pick;
 }
 
 function buildTiles() {

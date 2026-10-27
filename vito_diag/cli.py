@@ -274,6 +274,11 @@ def _print_lada_head(rep):
         print(f"    номер блока: {rep.ecu_number}")
     if rep.vin:
         print(f"    VIN: {rep.vin}")
+    names = (("sw", "прошивка"), ("engine", "двигатель"), ("date", "дата прошивки"), ("ecu_id", "метка"),
+             ("supplier_hw", "номер поставщика"))
+    for key, label in names:
+        if rep.ident.get(key):
+            print(f"    {label}: {rep.ident[key]}")
     if rep.ident_text:
         print(f"    идентификация: {rep.ident_text}")
     for req, raw in rep.ident_raw.items():
@@ -298,12 +303,13 @@ def make_profile(args):
 
     if args.profile == "lada":
         if args.demo:
-            from vito_diag.emulator import JanuaryEmulator
+            from vito_diag.emulator import JanuaryEmulator, KklJanuary51
 
-            return live.LadaProfile(ser_factory=lambda: JanuaryEmulator(args.demo))
+            emu = KklJanuary51 if args.kkl else JanuaryEmulator
+            return live.LadaProfile(ser_factory=lambda: emu(args.demo), kkl=args.kkl)
         if not args.port:
             raise ValueError("Укажите порт адаптера: --port COM7 (или --demo без машины)")
-        return live.LadaProfile(args.port, args.baudrate or 38400, args.hub or "")
+        return live.LadaProfile(args.port, args.baudrate or 38400, args.hub or "", kkl=args.kkl)
     return live.ObdProfile(args.port or "", args.baudrate, demo=bool(args.demo))
 
 
@@ -360,7 +366,12 @@ def cmd_lada(args):
 
         hub = Hub(args.hub)
     try:
-        link = ElmLink(args.port, baudrate=args.baudrate)
+        if args.kkl:
+            from vito_diag.kkl import KklLink
+
+            link = KklLink(args.port)
+        else:
+            link = ElmLink(args.port, baudrate=args.baudrate)
     except Exception:
         if hub:
             hub.close()
@@ -380,7 +391,7 @@ def cmd_lada(args):
             out.mkdir(parents=True, exist_ok=True)
             live_path = out / f"lada_live_{datetime.now():%Y-%m-%d_%H-%M-%S}.csv"
             live_file = open(live_path, "w", newline="", encoding="utf-8")
-            names = ["t"] + [n for n, *_ in january.PIDS.values()] + ["raw_2101"]
+            names = ["t"] + list(january.ALL_META) + ["raw_2101"]
             writer = csv.DictWriter(live_file, fieldnames=names, delimiter=";", extrasaction="ignore")
             writer.writeheader()
             start = time.monotonic()
@@ -414,7 +425,7 @@ def cmd_lada(args):
 
     if rep.samples:
         print("\n  Живые данные (мин / среднее / макс):")
-        for pid, (name, label, unit, _f) in january.PIDS.items():
+        for name, (label, unit) in january.ALL_META.items():
             vals = [s[name] for s in rep.samples if name in s]
             if vals:
                 print(f"    {label:<38} {min(vals):8.2f} {sum(vals) / len(vals):8.2f} "
@@ -729,6 +740,8 @@ def build_parser():
     j.add_argument("--port", required=True, help="порт ELM327 / KKL, например COM7")
     j.add_argument("--baudrate", type=int, default=38400, help="скорость порта адаптера")
     j.add_argument("--hub", help="порт obd_hub (реле линий), например COM4 — выберет контакт 7")
+    j.add_argument("--kkl", action="store_true",
+                   help="кабель VAG KKL 409.1 (FTDI) вместо ELM327: K-line напрямую, 10400 бод")
     j.add_argument("--addr", default="10,11", help="адреса блока, hex (по умолчанию 10,11)")
     j.add_argument("--count", type=int, default=20, help="сколько опросов живых данных (0 — без них)")
     j.add_argument("--watch", action="store_true",
@@ -743,6 +756,8 @@ def build_parser():
     wb.add_argument("--port", help="порт адаптера, например COM7")
     wb.add_argument("--baudrate", type=int, help="скорость порта адаптера")
     wb.add_argument("--hub", help="lada: порт obd_hub (реле линий), например COM4")
+    wb.add_argument("--kkl", action="store_true",
+                    help="lada: кабель VAG KKL 409.1 (FTDI) вместо ELM327; с --demo — эмулятор «Января-5.1»")
     wb.add_argument("--demo", nargs="?", const="rich", choices=["rich", "ok"],
                     help="без машины: lada — эмулятор «Января» (rich — перелив, ok — исправный); obd — симулятор")
     wb.add_argument("--listen", default="0.0.0.0:8080", help="адрес:порт веб-сервера")

@@ -78,9 +78,11 @@ python -m vito_diag ecu read --port COMx --kline 10        # идентифик�
 python -m vito_diag ecu raw "1A 86" --port COMx --can 7E0  # свой запрос
 python -m vito_diag switch meas --switch COMy              # автопереключатель: напряжения на контактах
 python -m vito_diag ecu scan-kline --port COMx --switch COMy --line 7,8,9,11  # все линии сам
+python -m vito_diag lada --kkl --port COM9                # «Январь-5.1» через кабель KKL (рабочий путь)
 python -m vito_diag lada --port COM7 --hub COM4             # ВАЗ «Январь»: блок, ошибки, живые
 python -m vito_diag web --port COM7 --hub COM4              # приборка в браузере/телефоне (lada)
 python -m vito_diag web --demo                              # то же на эмуляторе «Января» (перелив)
+python -m vito_diag web --kkl --port COM9                 # приборка «Января-5.1» через KKL
 python -m vito_diag web --profile obd --port COMx           # приборка по общему OBD-II
 ```
 
@@ -167,5 +169,6 @@ python -m vito_diag web --profile obd --port COMx           # приборка �
   Быстрая инициализация (break 25 мс + 25 мс, 10400 бод), `81 10 F1 81` → `C1 6B 8F`. Оба клона ELM327 не смогли.
   `1A 80` → «213A -1411020-61 SCR … SPTJ5_575 SJ413 1.3 8v … 10-06-2022 Suzuki J…»: блок **перепрошит** (не J5V05L19 с
   этикетки) под **Suzuki SJ413 1.3 8 кл.** 10.06.2022. Ошибок нет (`58 00`). Служба 01 (OBD-II) — NRC 0x11.
-  `21 01` (36 байт, зажигание вкл.): `1F 82 01 04 00 00 00 00 31 4D 00 00 00 96 96 80 00 00 75 00 16 00 … FF FF 40 B1` —
-  раскладка не разобрана.
+  `21 01` (36 байт) разобран по спецификации АвтоВАЗ для M1.5.4N/Январь-5 Euro-2 (`january.J51_FIELDS`): на холодном
+  моторе ОЖ 9 °C, 10,8–11 В, заданный состав 11,8. В 1A 91 номер «G13A -1411020-61» (в 1A 80 первый символ испорчен).
+  vito_diag: `lada/web --kkl` (vito_diag/kkl.py), эмулятор `emulator.KklJanuary51`, окно — галка «кабель KKL».

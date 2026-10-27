@@ -6,7 +6,9 @@
 ```
 python -m vito_diag web --port COM7 --hub COM4        # ВАЗ «Январь» (K-line, контакт 7)
 python -m vito_diag web --profile obd --port COM7     # общий OBD-II (Mercedes и др.)
+python -m vito_diag web --kkl --port COM9             # «Январь-5.1» через кабель KKL (без ELM327)
 python -m vito_diag web --demo                        # эмулятор «Января» с переливом (без машины)
+python -m vito_diag web --kkl --demo                  # эмулятор «Января-5.1» за кабелем KKL
 python -m vito_diag web --demo ok                     # эмулятор исправного мотора
 ```
 

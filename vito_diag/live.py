@@ -21,7 +21,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 from vito_diag import january
 
 # Подпись и единицы для плиток: имя -> (подпись, единицы).
-LADA_META: Dict[str, Tuple[str, str]] = {name: (label, unit) for name, label, unit, _f in january.PIDS.values()}
+LADA_META: Dict[str, Tuple[str, str]] = dict(january.ALL_META)
 
 # Норма для прогретого мотора на холостом: вне диапазона плитка подсвечивается.
 NORMS: Dict[str, Tuple[float, float]] = {
@@ -31,20 +31,21 @@ NORMS: Dict[str, Tuple[float, float]] = {
 
 # Плитки по умолчанию (остальные включаются в настройках панели).
 DEFAULT_TILES = {
-    "lada": ["ECT", "RPM", "LTFT", "STFT", "O2S1", "MAF", "TPS", "TIMING"],
+    "lada": ["ECT", "RPM", "AFR", "INJ_MS", "LTFT", "STFT", "INJ_CORR", "O2S1", "MAF", "TPS", "TIMING", "FUEL_LH"],
     "obd": ["RPM", "COOLANT_TEMP", "ENGINE_LOAD", "MAF", "INTAKE_PRESSURE", "CONTROL_MODULE_VOLTAGE"],
 }
 
 
 class LadaProfile:
-    """ВАЗ «Январь» / M7.9.7 / М73 / М74 через ElmLink (K-line, контакт 7)."""
+    """ВАЗ «Январь» / M7.9.7 / М73 / М74: через ElmLink или кабель KKL (kkl=True), K-line, контакт 7."""
 
     kind = "lada"
     meta = LADA_META
 
     def __init__(self, port: str = "", baudrate: int = 38400, hub: str = "", ser_factory=None,
-                 log_dir: str = "logs", addresses=january.ADDRESSES):
-        self.port, self.baudrate, self.hub_port = port, baudrate, hub
+                 log_dir: str = "logs", addresses=january.ADDRESSES, kkl: bool = False):
+        self.port, self.baudrate, self.hub_port, self.kkl = port, baudrate, hub, kkl
+        self.layout = ""
         self.ser_factory = ser_factory  # эмулятор: фабрика объекта с интерфейсом pyserial
         self.log_dir, self.addresses = log_dir, addresses
         self.link = self.hub = self.module = None
@@ -60,7 +61,12 @@ class LadaProfile:
             self.hub = Hub(self.hub_port)
             self.hub.switch.select("7")
         ser = self.ser_factory() if self.ser_factory else None
-        self.link = ElmLink(self.port or "emu", baudrate=self.baudrate, ser=ser, log_dir=self.log_dir)
+        if self.kkl:
+            from vito_diag.kkl import KklLink
+
+            self.link = KklLink(self.port or "emu", ser=ser, log_dir=self.log_dir)
+        else:
+            self.link = ElmLink(self.port or "emu", baudrate=self.baudrate, ser=ser, log_dir=self.log_dir)
         self.module = january.connect(self.link, self.addresses)
         if self.module is None:
             raise ConnectionError("блок не отвечает на K-line (адреса "
@@ -71,11 +77,19 @@ class LadaProfile:
         self.pids = january.supported_pids(self.link, self.module)
         self.fuel_system = january.read_fuel_system(self.link, self.module) if 0x03 in self.pids else ""
         notes = list(rep.notes)
+        self.layout = "obd" if self.pids else ""
         if not self.pids:
-            notes.append("Блок не отдаёт стандартные живые данные (вероятно, Евро-2 без лямбды).")
+            first = january.parse_hex(january.read_2101(self.link, self.module))
+            if january.decode_2101(first):
+                self.layout = "j51"
+                self.fuel_system = january.j51_fuel_system(first)
+            else:
+                notes.append("Блок не отдаёт стандартные живые данные (вероятно, Евро-2 без лямбды).")
+        extra = [rep.ident.get(k, "") for k in ("sw", "engine", "date", "ecu_id")]
         return {
             "title": f"ВАЗ «Январь», K-line 0x{rep.address:02X}",
-            "ecu": rep.ecu_number, "vin": rep.vin, "ident": rep.ident_text,
+            "ecu": rep.ecu_number, "vin": rep.vin,
+            "ident": " · ".join(x for x in extra if x) if rep.ident else rep.ident_text,
             "adapter": (self.link.version or "").splitlines()[-1] if self.link.version else "",
             "voltage": self.link.voltage(),
             "dtcs": [{"code": d.code, "description": d.description,
@@ -85,6 +99,13 @@ class LadaProfile:
         }
 
     def sample(self) -> Dict[str, float]:
+        if self.layout == "j51":
+            raw = january.parse_hex(january.read_2101(self.link, self.module))
+            values = january.decode_2101(raw)
+            if not values:
+                raise ConnectionError("блок перестал отвечать")
+            self.fuel_system = january.j51_fuel_system(raw)
+            return values
         if not self.pids:
             raise ConnectionError("нет живых данных")
         values = january.read_sample(self.link, self.module, self.pids)

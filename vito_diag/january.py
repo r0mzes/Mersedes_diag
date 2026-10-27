@@ -6,7 +6,9 @@
   вида 2112-1411020-xx; раскладку полей не угадываем, сырой ответ сохраняем;
 - ошибки (18 00 FF 00, затем 18 02 FF 00);
 - живые данные стандартными запросами OBD-II (служба 01: ОЖ, коррекции, лямбда, ДМРВ…),
-  их понимают блоки под Евро-2/3 с лямбда-зондом; плюс сырой блок 21 01 для разбора позже.
+  их понимают блоки под Евро-2/3 с лямбда-зондом;
+- если службы 01 нет (Январь-5.1, Bosch M1.5.4N) — заводской блок 21 01 по раскладке из
+  спецификации АвтоВАЗ «KWP2000 for M1.5.4N and Январь-5 Euro-2» (2000 г.), см. J51_FIELDS.
 
 Ничего не пишет и не стирает: все запросы проходят через защиту ElmLink (только чтение).
 """
@@ -45,6 +47,85 @@ PIDS: Dict[int, Tuple[str, str, str, Callable[[List[int]], float]]] = {
     0x42: ("VOLT", "Напряжение бортсети (ЭБУ)", "В", lambda d: (d[0] * 256 + d[1]) / 1000),
 }
 
+# Блок 21 01 «Января-5.1» / M1.5.4N (данные после 61 01, 34 байта): имя, подпись, единицы, формула.
+# Раскладка — из спецификации АвтоВАЗ (её же приводит AristarhUcolov/universal-diagnostic-tool,
+# vaz-m154n-euro2.json); на машине 2026-10-27 при включённом зажигании сошлась: ОЖ 9 °C, 11 В, 0 об/мин.
+def _u16(d, i):
+    return d[i] | d[i + 1] << 8
+
+
+def _s8(b):
+    return b - 256 if b > 127 else b
+
+
+J51_FIELDS: List[Tuple[str, str, str, Callable[[List[int]], Optional[float]]]] = [
+    ("ECT", "Температура ОЖ", "°C", lambda d: d[8] - 40),
+    ("AFR", "Заданный состав смеси (воздух/топливо)", "", lambda d: 14.7 * (d[9] + 128) / 256),
+    ("TPS", "Положение дросселя", "%", lambda d: d[10]),
+    ("RPM", "Обороты", "об/мин", lambda d: d[11] * 40),
+    ("IAC", "Положение РХХ", "шаги", lambda d: d[14]),
+    ("INJ_CORR", "Коррекция впрыска по лямбде", "", lambda d: (d[15] + 128) / 256),
+    ("TIMING", "Угол опережения зажигания", "°", lambda d: _s8(d[16]) / 2),
+    ("SPEED", "Скорость", "км/ч", lambda d: d[17]),
+    ("VOLT", "Напряжение бортсети (ЭБУ)", "В", lambda d: 5.2 + d[18] * 0.05),
+    ("IDLE_TARGET", "Желаемые обороты ХХ", "об/мин", lambda d: d[19] * 10),
+    ("O2S1", "Лямбда-зонд 1 (до катализатора)", "В", lambda d: 1.25 * d[20] / 256),
+    ("INJ_MS", "Время впрыска", "мс", lambda d: _u16(d, 22) / 125),
+    ("MAF", "Расход воздуха (ДМРВ)", "кг/ч", lambda d: _u16(d, 24) / 10),
+    ("GBC", "Цикловое наполнение", "мг/цикл", lambda d: _u16(d, 26) / 6),
+    ("FUEL_LH", "Расход топлива", "л/ч", lambda d: _u16(d, 28) / 50),
+    ("FUEL_100", "Путевой расход топлива", "л/100 км",
+     lambda d: None if _u16(d, 30) == 0xFFFF else _u16(d, 30) / 128),
+]
+
+# Подписи и единицы всех живых параметров (для CSV, панели): сначала OBD-II, потом 21 01.
+ALL_META: Dict[str, Tuple[str, str]] = {name: (label, unit) for name, label, unit, _f in PIDS.values()}
+for _n, _l, _u, _f in J51_FIELDS:
+    ALL_META.setdefault(_n, (_l, _u))
+
+
+def decode_2101(payload: List[int]) -> Dict[str, float]:
+    """61 01 + 34 байта -> {параметр: значение}; {} — не та длина (другая прошивка)."""
+    d = payload[2:]
+    if payload[:2] != [0x61, 0x01] or len(d) < 34:
+        return {}
+    out: Dict[str, float] = {}
+    for name, _label, _unit, f in J51_FIELDS:
+        v = f(d)
+        if v is not None:
+            out[name] = round(v, 2)
+    return out
+
+
+def j51_fuel_system(payload: List[int]) -> str:
+    """Режим топливоподачи из битов байта 2 блока 21 01 (байт 0 бит 0 — есть ли лямбда-зонд)."""
+    d = payload[2:]
+    if len(d) < 34 or not d[0] & 0x01 or d[2] & 0x01:  # нет зонда в комплектации или мотор стоит
+        return ""
+    if d[2] & 0x08:
+        return "разомкнутый контур (отсечка топлива)"
+    if d[2] & 0x04:
+        return "разомкнутый контур (обогащение по мощности)"
+    return "работа по лямбда-зонду" if d[2] & 0x10 else "разомкнутый контур (не прогрет)"
+
+
+# Поля 1A 80 «Января-5.1» (после 5A 80): имя, длина. Пустые поля блок заполняет FF.
+J51_IDENT = [("vin", 19), ("hw", 16), ("supplier_hw", 10), ("sw", 10), ("engine", 15),
+             ("repair", 7), ("date", 10), ("ecu_id", 8)]
+
+
+def decode_1a80(payload: List[int]) -> Dict[str, str]:
+    if payload[:2] != [0x5A, 0x80] or len(payload) < 2 + sum(n for _, n in J51_IDENT):
+        return {}
+    out, i = {}, 2
+    for key, n in J51_IDENT:
+        text = "".join(chr(b) for b in payload[i:i + n] if 32 <= b < 127).strip()
+        if text:
+            out[key] = text
+        i += n
+    return out
+
+
 FUEL_SYSTEM = {1: "разомкнутый контур (не прогрет)", 2: "работа по лямбда-зонду",
                4: "разомкнутый контур (нагрузка/торможение)", 8: "разомкнутый контур (неисправность)",
                16: "по лямбда-зонду, но с неисправностью датчика"}
@@ -57,6 +138,8 @@ class LadaReport:
     ident_text: str = ""
     vin: str = ""
     ecu_number: str = ""
+    ident: Dict[str, str] = field(default_factory=dict)
+    layout: str = ""  # "obd" — живые по службе 01, "j51" — по блоку 21 01
     dtcs: list = field(default_factory=list)
     dtc_error: str = ""
     supported_pids: List[int] = field(default_factory=list)
@@ -69,6 +152,7 @@ class LadaReport:
         return {
             "address": f"0x{self.address:02X}", "ident_raw": self.ident_raw,
             "ident_text": self.ident_text, "vin": self.vin, "ecu_number": self.ecu_number,
+            "ident": self.ident, "layout": self.layout,
             "dtcs": [{"code": d.code, "description": d.description, **d.extra} for d in self.dtcs],
             "dtc_error": self.dtc_error,
             "supported_pids": [f"{p:02X}" for p in self.supported_pids],
@@ -98,6 +182,8 @@ def identify(link, module: Module, rep: LadaReport) -> None:
         except DiagError:
             continue
         rep.ident_raw[req] = hex_bytes(payload)
+        if req == "1A80":
+            rep.ident.update(decode_1a80(payload))
         text = extract_text(payload[2:])
         if text and text not in rep.ident_text:
             rep.ident_text = (rep.ident_text + " | " + text).strip(" |")
@@ -106,6 +192,15 @@ def identify(link, module: Module, rep: LadaReport) -> None:
     rep.vin = m.group(0) if m else ""
     m = _ECU_RE.search(joined)
     rep.ecu_number = m.group(0) if m else ""
+    if rep.ident:  # поля 1A 80 «Января-5.1» точнее поиска по тексту
+        rep.vin = rep.ident.get("vin", "")
+        rep.ecu_number = rep.ident.get("hw", rep.ecu_number)
+        # 1A 91 — то же поле отдельно; на машине 2026-10-27 в 1A 80 первый символ был испорчен
+        # («213A…» вместо «G13A…»), поэтому отдельному ответу верим больше.
+        hw = rep.ident_raw.get("1A91", "").split()[2:]
+        text = "".join(chr(int(b, 16)) for b in hw if 32 <= int(b, 16) < 127).strip()
+        if text:
+            rep.ident["hw"] = rep.ecu_number = text
 
 
 def read_dtcs(link, module: Module, rep: LadaReport) -> None:
@@ -176,6 +271,10 @@ def read_2101(link, module: Module) -> str:
         return f"ERR {e}"
 
 
+def parse_hex(raw: str) -> List[int]:
+    return [] if raw.startswith("ERR") else [int(x, 16) for x in raw.split()]
+
+
 def check_mixture(samples: List[Dict[str, float]], fuel_system: str = "") -> List[str]:
     """Подсказки по переливу / бедной смеси по записанным живым данным (двигатель работает)."""
     running = [s for s in samples if s.get("RPM", 0) > 400]
@@ -226,6 +325,23 @@ def check_mixture(samples: List[Dict[str, float]], fuel_system: str = "") -> Lis
         if m > 14:
             out.append(f"На холостом ДМРВ показывает {m:.1f} кг/ч (для 1,5–1,6 л обычно 7–12): датчик может "
                        "завышать расход, и блок льёт больше топлива.")
+    warm = [s for s in running if s.get("ECT", 90) >= 70]
+    afr = [s["AFR"] for s in warm if "AFR" in s and s.get("TPS", 0) < 3]
+    if afr:
+        a = sum(afr) / len(afr)
+        if a < 13.5:
+            out.append(f"Блок сам задаёт богатую смесь: на прогретом холостом заданный состав {a:.1f} "
+                       "(норма 14,7). Это таблицы прошивки — при переделанной или чужой прошивке "
+                       "первая причина перелива.")
+    corr = [s["INJ_CORR"] for s in warm if "INJ_CORR" in s]
+    if corr and fuel_system == "работа по лямбда-зонду":
+        k = sum(corr) / len(corr)
+        if k < 0.9:
+            out.append(f"Коррекция по лямбде урезает впрыск на {(1 - k) * 100:.0f} %: топлива больше, чем "
+                       "рассчитал блок — форсунки, давление топлива, адсорбер или ДМРВ завышает.")
+        elif k > 1.1:
+            out.append(f"Коррекция по лямбде добавляет {(k - 1) * 100:.0f} % топлива: смесь бедная — "
+                       "подсос воздуха, давление топлива, ДМРВ занижает.")
     tps = [s["TPS"] for s in running if "TPS" in s]
     if tps and min(tps) > 5:
         out.append(f"Дроссель не ниже {min(tps):.0f} % даже на холостом — проверить ДПДЗ и упор дросселя.")
@@ -253,10 +369,18 @@ def scan(link, live_count: int = 10, progress: Optional[Callable[[str], None]] =
     read_dtcs(link, module, rep)
     say("живые данные")
     rep.supported_pids = supported_pids(link, module)
-    if not rep.supported_pids:
-        rep.notes.append("Блок не отвечает на запросы OBD-II (служба 01) — вероятно, прошивка Евро-2 "
-                         "без лямбда-зонда; живые данные только сырым блоком 21 01.")
-    rep.fuel_system = read_fuel_system(link, module) if 0x03 in rep.supported_pids else ""
+    if rep.supported_pids:
+        rep.layout = "obd"
+        rep.fuel_system = read_fuel_system(link, module) if 0x03 in rep.supported_pids else ""
+    else:
+        first = parse_hex(read_2101(link, module))
+        if decode_2101(first):
+            rep.layout = "j51"
+            rep.fuel_system = j51_fuel_system(first)
+            rep.notes.append("Службы OBD-II нет — живые данные из заводского блока 21 01 (раскладка «Января-5.1»).")
+        else:
+            rep.notes.append("Блок не отвечает на запросы OBD-II (служба 01), а блок 21 01 не по раскладке "
+                             "«Января-5.1» — живые данные только сырыми.")
     if on_ready:
         on_ready(rep)
     i = 0
@@ -265,8 +389,11 @@ def scan(link, live_count: int = 10, progress: Optional[Callable[[str], None]] =
         say(f"живые данные {i}" + (f"/{live_count}" if live_count > 0 else ""))
         sample = read_sample(link, module, rep.supported_pids) if rep.supported_pids else {}
         raw = read_2101(link, module)
+        if rep.layout == "j51":
+            sample = decode_2101(parse_hex(raw))
+            rep.fuel_system = j51_fuel_system(parse_hex(raw)) or rep.fuel_system
         if live_count > 0:  # в бесконечном режиме замеры не копим — их пишет on_sample
-            if rep.supported_pids:
+            if rep.layout:
                 rep.samples.append(sample)
             rep.raw_2101.append(raw)
         if on_sample:

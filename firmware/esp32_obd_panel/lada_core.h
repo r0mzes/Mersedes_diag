@@ -781,7 +781,8 @@ class Poller {
     for (size_t i = 0; i < hints.size(); i++) o += std::string(i ? "," : "") + jsonStr(hints[i]);
     o += "],\"samples\":" + std::to_string(samples) + ",\"reconnects\":" + std::to_string(reconnects) +
          ",\"csv\":\"\",\"version\":" + std::to_string(version) +
-         ",\"default_tiles\":[\"ECT\",\"RPM\",\"LTFT\",\"STFT\",\"O2S1\",\"MAF\",\"TPS\",\"TIMING\"]";
+         ",\"default_tiles\":[\"ECT\",\"RPM\",\"AFR\",\"INJ_MS\",\"LTFT\",\"STFT\",\"INJ_CORR\",\"O2S1\",\"MAF\",\"TPS\","
+         "\"TIMING\",\"FUEL_LH\"]";
     if (withHistory) {
       o += ",\"history\":[";
       for (size_t i = 0; i < history.size(); i++) {

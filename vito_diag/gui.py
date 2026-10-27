@@ -42,28 +42,31 @@ def _catalog_title(m):
 
 def build_args(action: str, port: str = "", baudrate: str = "", line: str = "7",
                block: str = "", demo: bool = False, switch: bool = False, hub: str = "",
-               details: bool = True, count: str = "20") -> list:
+               details: bool = True, count: str = "20", kkl: bool = False) -> list:
     """Аргументы python -m vito_diag для кнопки окна.
 
     switch — авто-переключатель линий на HC-06, через тот же мост ESP32 (--switch bt).
     hub — порт obd_hub: кнопки блоков («Коробка», «ESP»…) читают их по CAN через него,
     шину и адрес программа берёт из справочника, переключать контакты не нужно."""
     if action in ("web-lada", "web-obd"):
-        args = ["web", "--profile", action[4:]]
+        args = ["web", "--profile", action[4:]] + (["--kkl"] if kkl and action == "web-lada" else [])
         if demo:
             return args + ["--demo"]
         if not port:
             raise ValueError("Выберите порт адаптера (или включите «Демо»)")
-        args += ["--port", port] + (["--baudrate", baudrate] if baudrate else [])
-        return args + (["--hub", hub] if hub and action == "web-lada" else [])
+        args += ["--port", port] + (["--baudrate", baudrate] if baudrate and not kkl else [])
+        return args + (["--hub", hub] if hub and action == "web-lada" and not kkl else [])
     if action in ("lada", "lada-watch"):
         if demo or not port:
             raise ValueError("«Январь» читается только с машины: выберите порт адаптера и снимите «Демо»")
         args = ["lada", "--port", port]
-        if baudrate:
-            args += ["--baudrate", baudrate]
-        if hub:
-            args += ["--hub", hub]
+        if kkl:
+            args += ["--kkl"]  # кабель в разъёме машины: ни скорость ELM327, ни obd_hub не нужны
+        else:
+            if baudrate:
+                args += ["--baudrate", baudrate]
+            if hub:
+                args += ["--hub", hub]
         return args + (["--watch"] if action == "lada-watch" else ["--count", str(int(count or 0))])
     if action in ("module", "all-modules"):
         if demo:
@@ -378,6 +381,7 @@ class App:
         self.hub = tk.StringVar()
         self.details = tk.BooleanVar(value=True)
         self.lada_count = tk.StringVar(value="20")
+        self.kkl = tk.BooleanVar(value=True)
         self.status = tk.StringVar(value="Готово")
 
         pad = {"padx": 6, "pady": 4}
@@ -429,6 +433,7 @@ class App:
         ttk.Spinbox(lada, from_=0, to=200, textvariable=self.lada_count, width=5).pack(side="left", **pad)
         self._button(lada, "▶ Живые данные", self.lada_watch)
         self._button(lada, "📱 Панель в браузере", lambda: self.run("web-lada", title="Приборка в браузере"))
+        ttk.Checkbutton(lada, text="кабель KKL", variable=self.kkl).pack(side="left", **pad)
         ttk.Label(lada, text="мотор заведён и прогрет; «Отмена» — стоп").pack(side="left", **pad)
         self.dash = LadaDashboard(vaz)
         self.dash.pack(fill="x", **pad)
@@ -566,7 +571,7 @@ class App:
             args = build_args(action, self._port(), self.baud.get().strip(), self.line.get(),
                               block or self.block.get(), self.demo.get(), self.switch.get(),
                               hub=self._hub(), details=self.details.get(),
-                              count=self.lada_count.get().strip())
+                              count=self.lada_count.get().strip(), kkl=self.kkl.get())
         except ValueError as e:
             messagebox.showwarning("vito_diag", str(e))
             return
